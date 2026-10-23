@@ -3,10 +3,11 @@ import {
   DaytonaNotFoundError,
   DaytonaGoneError,
 } from "@daytonaio/sdk";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { parseArgs } from "node:util";
 import { analyzeMedia } from "../src/media.ts";
+import { build } from "esbuild";
 
 const { values } = parseArgs({
   options: {
@@ -55,6 +56,15 @@ async function cleanupSandbox() {
 }
 
 try {
+  const recordingBundle = await build({
+    entryPoints: [new URL("../src/recording.ts", import.meta.url).pathname],
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    external: ["playwright", "playwright/*"],
+  });
   sandbox = await client.create(
     {
       snapshot: values.snapshot,
@@ -87,7 +97,12 @@ try {
     )
   )
     throw new Error("Unexpected desktop resolution");
+  await sandbox.fs.uploadFile(
+    Buffer.from(recordingBundle.outputFiles[0].contents),
+    "/opt/capture/recording.mjs",
+  );
   const source = `import {chromium} from 'playwright';
+import {startBrowserRecording} from './recording.mjs';
 import {writeFile,access} from 'node:fs/promises';
 const browser=await chromium.launch({headless:false,args:['--kiosk','--window-size=1920,1080']});
 const context=await browser.newContext({viewport:{width:1920,height:1080},locale:'en-US',timezoneId:'UTC',deviceScaleFactor:1});
@@ -96,15 +111,17 @@ await page.setContent('<style>body{margin:0;padding:100px;font:24px "DejaVu Sans
 await writeFile('/tmp/provider-ready','ready');
 const deadline=Date.now()+45000;
 for(;;){try{await access('/tmp/provider-start');break;}catch{if(Date.now()>deadline)throw new Error('Start timeout');await new Promise(r=>setTimeout(r,100));}}
-await page.screencast.start({path:'/tmp/browser.webm',size:{width:1920,height:1080},fps:60});
+const eventOrigin=performance.now();
+const recording=await startBrowserRecording(page,{path:'/tmp/browser.webm',size:{width:1920,height:1080},eventOriginMonotonicMs:eventOrigin});
+const firstActionAtMs=performance.now()-eventOrigin;
 await page.getByRole('textbox',{name:'Message'}).pressSequentially('Measure real browser typing and source frame timing.',{delay:35});
 for(const word of 'This is a deterministic streaming measurement. It is not an AI response or real product output.'.split(' ')){await page.locator('output').evaluate((node,word)=>node.textContent+=' '+word,word);await new Promise(r=>setTimeout(r,70));}
 await page.screenshot({path:'/tmp/provider.png'});
-await page.screencast.stop();
+const frameTiming=await recording.stop();
 await writeFile('/tmp/provider-finalized','done');
 await context.close();
 await browser.close();
-await writeFile('/tmp/provider-done.json',JSON.stringify({browser:browser.version(),node:process.version,playwright:'1.64.1'}));`;
+await writeFile('/tmp/provider-done.json',JSON.stringify({browser:browser.version(),node:process.version,playwright:'1.64.1',frameTiming,firstActionAtMs}));`;
   await sandbox.fs.uploadFile(
     Buffer.from(source),
     "/opt/capture/provider-check.mjs",
@@ -156,6 +173,11 @@ await writeFile('/tmp/provider-done.json',JSON.stringify({browser:browser.versio
   await waitFor("/tmp/provider-done.json");
   for (const name of ["browser.webm", "provider.png", "provider-done.json"])
     await sandbox.fs.downloadFile(`/tmp/${name}`, join(output, name));
+  const runtime = JSON.parse(
+    await readFile(join(output, "provider-done.json"), "utf8"),
+  );
+  if (runtime.firstActionAtMs < runtime.frameTiming.firstFrameReceivedAtMs)
+    throw new Error("Fixture acted before the first browser frame");
   const browser = await analyzeMedia(
     join(output, "browser.webm"),
     join(output, "browser-analysis"),
@@ -170,6 +192,7 @@ await writeFile('/tmp/provider-done.json',JSON.stringify({browser:browser.versio
       {
         purpose: report.purpose,
         display,
+        runtime,
         browser,
         desktop,
         gate: "not-a-real-product-capture",

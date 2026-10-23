@@ -5,6 +5,7 @@ import { CaptureManifest } from "@repo/contracts";
 import { signInWithCredentials } from "./authenticate.ts";
 import { startEgressProxy } from "./proxy.ts";
 import { armReplyCompletion, waitForCompletedReply } from "./completion.ts";
+import { startBrowserRecording } from "./recording.ts";
 
 interface Config {
   url: string;
@@ -134,10 +135,10 @@ try {
     const cpu = process.cpuUsage();
     const events: CaptureManifest["events"] = [];
     const evidence: CaptureManifest["evidence"] = [];
-    await page.screencast.start({
+    const browserRecording = await startBrowserRecording(page, {
       path: `${output}/browser.webm`,
       size: { width: config.width, height: config.height },
-      fps: 60,
+      eventOriginMonotonicMs: start,
     });
     recording = true;
     const recordingStartedAt = new Date().toISOString();
@@ -180,7 +181,7 @@ try {
     await reply.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${output}/reply.png` });
     await event("send", "verified", reply, "reply.png");
-    await page.screencast.stop();
+    const frameTiming = await browserRecording.stop();
     recording = false;
     await writeFile(
       `${root}/capture-finalized.json`,
@@ -215,6 +216,7 @@ try {
         bytes: media.length,
         recordingStartedAt,
         requestedFps: 60,
+        frameTiming,
       },
       events,
       evidence,

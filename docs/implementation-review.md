@@ -42,3 +42,17 @@ One P2 finding: the fault-check initially removed its test row even when deletio
 One P2 finding: the initial network report lacked repeatable direct probes and positive controls. Fixed: a committed direct TCP script records destination, port, transport, error, timing, each policy's exact CIDRs, and the same public destination's blocked → allowed → blocked result. Private-address claims are limited to the tested observations. The independent re-review found no remaining material spec issue in this unit.
 
 Standards: 1 finding, P2, resolved. Spec: 1 finding, P2, resolved. Full-plan completion remains unproven: real Krafty credentials/chat, three real captures, successful private upload, billing reconciliation, and hosted deployment are still pending.
+
+## Browser frame timing follow-up
+
+The capture lifecycle now waits for its first actual browser frame before typing. A validated optional manifest field retains raw browser timestamps, worker receipt times, callback count and backward-timestamp measurements. Older manifests remain readable. Alignment stays `requires-review`: these observations do not calibrate encoded video PTS or desktop synchronization.
+
+### Standards
+
+The independent review found no material actionable hard-rule breach or heuristic smell in this unit.
+
+### Spec
+
+The independent review found no material actionable spec defect or scope creep in this unit. It explicitly retained synchronized events and three consecutive real captures as unfulfilled acceptance gates.
+
+Standards: 0 findings. Spec: 0 findings. Repository lint/type checks, all 14 tests (including isolated PostgreSQL and hosted intake), remote bundles and production web build passed. A live Daytona synthetic run used the production helper and recorded a 16.665ms backward timestamp jump; both recordings fully decoded. Two preceding attempts failed because the initial implementation assumed ordered timestamps. Provider readback verified deletion of all three sandboxes. The reviewers did not rerun live tests; sanitized results are retained in `docs/evidence/daytona-frame-clock-2026-10-23.json`. This adds measurement evidence, not a real Krafty take or full-plan completion.

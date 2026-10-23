@@ -1,0 +1,57 @@
+{
+  "purpose": "synthetic-provider-preflight-not-product-evidence",
+  "provider": {
+    "purpose": "synthetic-provider-preflight-not-product-evidence",
+    "snapshot": "screen-studio-pw-1-64-1-v1",
+    "startedAt": "2026-10-23T23:46:55.741Z",
+    "sandboxId": "adc20f2e-6e76-45a2-abe4-f21f98b1fad2",
+    "cleanupVerified": true,
+    "finishedAt": "2026-10-23T23:47:18.432Z"
+  },
+  "runtime": {
+    "browser": "156.0.8078.4",
+    "node": "v24.22.1",
+    "playwright": "1.64.1",
+    "frameTiming": {
+      "eventOriginUnixMs": 1792799221690.663,
+      "firstFrameUnixMs": 1792799221724.063,
+      "lastFrameUnixMs": 1792799228607.12,
+      "firstFrameReceivedAtMs": 68.87349100000006,
+      "lastFrameReceivedAtMs": 7018.496391999999,
+      "frameCount": 149,
+      "timestampRegressions": 1,
+      "largestTimestampRegressionMs": 16.664794921875,
+      "alignment": "requires-review"
+    },
+    "firstActionAtMs": 69.11588200000006
+  },
+  "browser": {
+    "width": 1920,
+    "height": 1080,
+    "codec": "vp9",
+    "durationSeconds": 7.95,
+    "frameCount": 477,
+    "distinctFrames": 477
+  },
+  "desktop": {
+    "width": 1920,
+    "height": 1080,
+    "codec": "h264",
+    "durationSeconds": 8.533333,
+    "frameCount": 256,
+    "distinctFrames": 204
+  },
+  "precedingAttempts": [
+    {
+      "sandboxId": "248d18b4-088f-4135-9745-e885398d29d6",
+      "cleanupVerified": true,
+      "result": "failed due to initial assumption that browser frame timestamps were ordered"
+    },
+    {
+      "sandboxId": "e5af27c1-6792-46cf-8a08-ecd3447609f8",
+      "cleanupVerified": true,
+      "result": "failed due to initial assumption that browser frame timestamps were ordered"
+    }
+  ],
+  "interpretation": "Raw browser callback timestamps and worker receipt observations only. Callback counts differ from encoded frame counts. Source timestamps can regress. Encoded PTS alignment, desktop synchronization, actual cost and real-product quality gate remain unproven."
+}

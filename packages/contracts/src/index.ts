@@ -191,6 +191,41 @@ export const CaptureEvent = z
   })
   .strict();
 
+export const BrowserFrameTiming = z
+  .object({
+    eventOriginUnixMs: z.number().positive(),
+    firstFrameUnixMs: z.number().positive(),
+    lastFrameUnixMs: z.number().positive(),
+    firstFrameReceivedAtMs: z.number().nonnegative(),
+    lastFrameReceivedAtMs: z.number().nonnegative(),
+    frameCount: z.number().int().positive(),
+    timestampRegressions: z.number().int().nonnegative(),
+    largestTimestampRegressionMs: z.number().nonnegative(),
+    alignment: z.literal("requires-review"),
+  })
+  .strict()
+  .superRefine((timing, ctx) => {
+    if (
+      (timing.timestampRegressions === 0 &&
+        timing.lastFrameUnixMs < timing.firstFrameUnixMs) ||
+      timing.lastFrameReceivedAtMs < timing.firstFrameReceivedAtMs
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Reversed browser frame timeline",
+      });
+    if (
+      timing.timestampRegressions >= timing.frameCount ||
+      (timing.timestampRegressions === 0) !==
+        (timing.largestTimestampRegressionMs === 0)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Inconsistent browser frame regressions",
+      });
+  });
+export type BrowserFrameTiming = z.infer<typeof BrowserFrameTiming>;
+
 export const CaptureManifest = z
   .object({
     schemaVersion: z.literal(1),
@@ -221,6 +256,8 @@ export const CaptureManifest = z
         bytes: z.number().int().positive(),
         recordingStartedAt: z.iso.datetime(),
         requestedFps: z.literal(60),
+        // Optional for older captures. New captures retain raw frame observations.
+        frameTiming: BrowserFrameTiming.optional(),
       })
       .strict(),
     events: z.array(CaptureEvent),
@@ -246,6 +283,14 @@ export const CaptureManifest = z
   .superRefine((manifest, ctx) => {
     let previous = 0;
     for (const event of manifest.events) {
+      if (
+        manifest.media.frameTiming &&
+        event.atMs < manifest.media.frameTiming.firstFrameReceivedAtMs
+      )
+        ctx.addIssue({
+          code: "custom",
+          message: "Action preceded first browser frame",
+        });
       if (event.atMs < previous || event.atMs > manifest.elapsedMs)
         ctx.addIssue({
           code: "custom",
