@@ -1,0 +1,32 @@
+{
+  "formReady": true,
+  "finalOrigin": "https://kraftybot.app",
+  "failedOrigins": ["https://kraftybot.app", "https://cdn.protect.clerk.com"],
+  "outboundChecks": [
+    {
+      "host": "169.254.169.254",
+      "denied": true
+    },
+    {
+      "host": "10.0.0.1",
+      "denied": true
+    },
+    {
+      "host": "1.1.1.1",
+      "denied": true
+    }
+  ],
+  "browser": "156.0.8078.4",
+  "purpose": "unauthenticated-krafty-login-and-egress-preflight",
+  "snapshot": "screen-studio-pw-1-64-1-v1",
+  "sandboxId": "9bab7a58-a0d5-4644-bda1-7cecf1e5d1c9",
+  "credentialsSubmitted": false,
+  "sandboxDeleted": true,
+  "allowedOrigins": [
+    "https://kraftybot.app",
+    "https://clerk.kraftybot.app",
+    "https://img.clerk.com",
+    "https://api.trigger.dev"
+  ],
+  "allowedIPv4CIDRCount": 7
+}

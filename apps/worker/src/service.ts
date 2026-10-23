@@ -45,6 +45,7 @@ try {
           await daytona.delete(
             await daytona.get(run.sandbox_id ?? `capture-${run.id}`),
             30,
+            true,
           );
           await store.sandboxDeleted(run.id);
         } catch (error) {

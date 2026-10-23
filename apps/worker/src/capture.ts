@@ -37,7 +37,7 @@ export async function captureRun(
     try {
       if (!(await store.heartbeat(run.id))) {
         aborted = true;
-        if (sandbox) await daytona.delete(sandbox, 30);
+        if (sandbox) await daytona.delete(sandbox, 30, true);
       }
     } catch {
       aborted = true;
@@ -75,7 +75,7 @@ export async function captureRun(
           throw new Error("Target is not enabled");
         const configured = (
           process.env.BROWSER_ALLOWED_ORIGINS ??
-          "https://kraftybot.app,https://clerk.kraftybot.app,https://img.clerk.com,https://api.trigger.dev"
+          "https://kraftybot.app,https://clerk.kraftybot.app,https://img.clerk.com,https://api.trigger.dev,https://cdn.protect.clerk.com"
         ).split(",");
         const origins = [...new Set([targetOrigin, ...configured])];
         const destinations = Object.fromEntries(
@@ -359,7 +359,7 @@ export async function captureRun(
               .stop(recordingId)
               .catch(() => undefined);
           try {
-            await daytona.delete(sandbox, 30);
+            await daytona.delete(sandbox, 30, true);
             await store.sandboxDeleted(run.id);
           } catch {
             console.error(

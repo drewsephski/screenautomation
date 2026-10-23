@@ -1,0 +1,13 @@
+{
+  "purpose": "production-capture-failure-before-credential-upload",
+  "runId": "bce9a83c-9725-47ea-adfe-9ffe592271e5",
+  "provisionedSandboxId": "0fd45ca1-ea92-4c2d-bfad-a0abd3ec010d",
+  "bundleUploadFailed": true,
+  "faultInjectedAtProviderBoundary": true,
+  "workflowFailed": true,
+  "credentialsCleared": true,
+  "sandboxDeletionVerified": true,
+  "siteLoginAttempted": false,
+  "objectUploadAttempted": false,
+  "failureType": "Error"
+}

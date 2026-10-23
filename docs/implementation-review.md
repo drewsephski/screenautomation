@@ -28,3 +28,17 @@ Standards: 3 findings, highest P1, all addressed. Spec: 4 findings, highest P1, 
 Repository lint and type checks, production Next.js build, remote browser/analysis bundles, actual Chromium regression tests, FFmpeg decoding tests, PostgreSQL queue integration, and hosted intake/cancellation/isolation API checks passed locally. The final suite runs with the isolated database and a web service; no real capture worker is started during API tests.
 
 No real website credentials were submitted. Live Krafty login, Daytona recording/firewall behavior, private object-store behavior, real costs, and the three-consecutive-capture gate remain unverified. Docker daemon execution was unavailable. Railway configuration and deployment prerequisites are in `stage-0.md`; no deployment or paid provisioning was performed. Later rendering/discovery stages remain gated rather than represented as completed.
+
+## Live provider preflight follow-up
+
+The added Daytona key was used for an actual remote snapshot build, browser/desktop recording comparison, unauthenticated Krafty login-form load, direct provider firewall controls, and a controlled interruption through the production capture function. Sanitized evidence and repeatable commands are in `stage-0.md` and `docs/evidence/`.
+
+### Standards
+
+One P2 finding: the fault-check initially removed its test row even when deletion could not be verified. Fixed: remove the test row only after verified deletion; otherwise retain `cleanup_pending` and emit recovery IDs. The independent re-review found no remaining material standards breach or blocking smell.
+
+### Spec
+
+One P2 finding: the initial network report lacked repeatable direct probes and positive controls. Fixed: a committed direct TCP script records destination, port, transport, error, timing, each policy's exact CIDRs, and the same public destination's blocked → allowed → blocked result. Private-address claims are limited to the tested observations. The independent re-review found no remaining material spec issue in this unit.
+
+Standards: 1 finding, P2, resolved. Spec: 1 finding, P2, resolved. Full-plan completion remains unproven: real Krafty credentials/chat, three real captures, successful private upload, billing reconciliation, and hosted deployment are still pending.
