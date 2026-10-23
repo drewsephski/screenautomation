@@ -1,0 +1,12 @@
+{
+  "purpose": "committed-source-application-container-check",
+  "sourceCommit": "a084929781091ebef9808b508a0ea7812ce82bd6",
+  "snapshotName": "screen-studio-app-a08492978109",
+  "snapshotId": "eac6b3a2-59dd-4ff3-aaf4-c6ac83be7bcf",
+  "buildVerified": true,
+  "healthVerified": true,
+  "sandboxDeleted": true,
+  "snapshotDeleted": true,
+  "snapshotDeletionVerifiedAt": "2026-10-23T23:39:56.274Z",
+  "remainingScreenStudioSandboxes": []
+}
