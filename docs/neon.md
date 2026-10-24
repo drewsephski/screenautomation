@@ -1,6 +1,6 @@
 # Database status
 
-Local development now uses the isolated `screen_studio_development` database in the existing Railway Postgres service. Production Railway connections remain unchanged. The nine Neon development runs and three frames were backed up and compared row-for-row after transfer. See [cutover evidence](./evidence/railway-local-cutover-2026-10-24.json). Neon retirement awaits explicit confirmation for project `quiet-lab-53973272`. The historical setup below is superseded; do not pull its environment into the app.
+Local development now uses the isolated `screen_studio_development` database in the existing Railway Postgres service. Production Railway connections remain unchanged. The nine Neon development runs and three frames were backed up and compared row-for-row after transfer. See [cutover evidence](./evidence/railway-local-cutover-2026-10-24.json). Neon project `quiet-lab-53973272` and both branches were deleted after exact-project confirmation. An active-project search returned no matches. The historical setup below is superseded; do not pull its environment into the app.
 
 Local Railway TCP access verifies the project CA and the internal Postgres certificate identity. `DATABASE_SSL_CA_FILE` points to the private local certificate file; internal Railway connections do not use this override. Runtime and migration roles are separate.
 

@@ -1,3 +1,11 @@
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import type { FormEvent, RefObject } from "react";
 import { useState } from "react";
 
@@ -43,15 +51,27 @@ export function IntakeForm({
       >
         <fieldset disabled={active || busy}>
           <label htmlFor="mode">What should we record?</label>
-          <select
-            id="mode"
+          <Select
             name="mode"
             value={mode}
-            onChange={(event) => setMode(event.target.value)}
+            onValueChange={setMode}
+            disabled={active || busy}
           >
-            <option value="chat">A real chat and reply</option>
-            <option value="tour">A read-only product tour</option>
-          </select>
+            <SelectTrigger id="mode" aria-describedby="mode-description">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="chat">A real chat and reply</SelectItem>
+                <SelectItem value="tour">A read-only product tour</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <p id="mode-description" className="field-note mode-description">
+            {mode === "tour"
+              ? "Review an AI-proposed story before recording product pages."
+              : "Record one message and the product’s real response."}
+          </p>
           <label htmlFor="url">Website URL</label>
           <input
             id="url"
