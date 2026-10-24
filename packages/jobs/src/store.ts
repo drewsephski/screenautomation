@@ -26,6 +26,15 @@ export interface StoredRun {
   artifact_key: string | null;
   created_at: Date;
   lease_until: Date | null;
+  needs_code: boolean;
+  verification_code: string | null;
+}
+/** Latest desktop frame of an active run, shown only to its owner. */
+export interface LiveFrame {
+  image: Buffer;
+  step: string | null;
+  page_url: string | null;
+  captured_at: Date;
 }
 
 export class RunStore {
@@ -45,7 +54,13 @@ export class RunStore {
       sandbox_id text, artifact_key text, created_at timestamptz NOT NULL DEFAULT now(),
       lease_until timestamptz, heartbeat_at timestamptz, expires_at timestamptz NOT NULL DEFAULT now() + interval '24 hours'
     ); ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS cleanup_pending boolean NOT NULL DEFAULT true;
-    CREATE INDEX IF NOT EXISTS capture_runs_queue ON capture_runs (created_at) WHERE status = 'queued';`);
+    ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS needs_code boolean NOT NULL DEFAULT false;
+    ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS verification_code text;
+    CREATE INDEX IF NOT EXISTS capture_runs_queue ON capture_runs (created_at) WHERE status = 'queued';
+    CREATE TABLE IF NOT EXISTS capture_frames (
+      run_id uuid PRIMARY KEY REFERENCES capture_runs (id) ON DELETE CASCADE,
+      image bytea NOT NULL, step text, page_url text, captured_at timestamptz NOT NULL DEFAULT now()
+    );`);
   }
   async create(owner: string, raw: unknown, key: string) {
     const input = RunInput.parse(raw);
@@ -88,11 +103,65 @@ export class RunStore {
   }
   async get(id: string, owner: string) {
     return (
-      await this.pool.query<StoredRun>(
-        "SELECT * FROM capture_runs WHERE id=$1 AND owner=$2 AND expires_at > now()",
+      await this.pool.query<
+        StoredRun & {
+          frame_at: Date | null;
+          step: string | null;
+          page_url: string | null;
+        }
+      >(
+        "SELECT r.*, f.captured_at AS frame_at, f.step, f.page_url FROM capture_runs r LEFT JOIN capture_frames f ON f.run_id=r.id WHERE r.id=$1 AND r.owner=$2 AND r.expires_at > now()",
         [id, owner],
       )
     ).rows[0];
+  }
+  async saveFrame(
+    id: string,
+    image: Buffer,
+    step: string | null,
+    pageUrl: string | null,
+  ) {
+    await this.pool.query(
+      "INSERT INTO capture_frames (run_id,image,step,page_url,captured_at) SELECT $1,$2,$3,$4,now() FROM capture_runs WHERE id=$1 AND status NOT IN ('completed','failed','cancelled') ON CONFLICT (run_id) DO UPDATE SET image=EXCLUDED.image, step=EXCLUDED.step, page_url=EXCLUDED.page_url, captured_at=EXCLUDED.captured_at",
+      [id, image, step, pageUrl],
+    );
+  }
+  async frame(id: string, owner: string) {
+    return (
+      await this.pool.query<LiveFrame>(
+        "SELECT f.image, f.step, f.page_url, f.captured_at FROM capture_frames f JOIN capture_runs r ON r.id=f.run_id WHERE f.run_id=$1 AND r.owner=$2 AND r.expires_at > now()",
+        [id, owner],
+      )
+    ).rows[0];
+  }
+  /** The site asked for a one-time code; the owner supplies it from the studio. */
+  async requestCode(id: string, detail: string) {
+    return (
+      (
+        await this.pool.query(
+          "UPDATE capture_runs SET needs_code=true, verification_code=NULL, detail=$2 WHERE id=$1 AND status='logging_in' RETURNING id",
+          [id, detail],
+        )
+      ).rowCount === 1
+    );
+  }
+  async submitCode(id: string, owner: string, sealed: string) {
+    return (
+      (
+        await this.pool.query(
+          "UPDATE capture_runs SET verification_code=$3, needs_code=false, detail='Code received. Finishing sign-in.' WHERE id=$1 AND owner=$2 AND needs_code AND status='logging_in' RETURNING id",
+          [id, owner, sealed],
+        )
+      ).rowCount === 1
+    );
+  }
+  async takeCode(id: string) {
+    return (
+      await this.pool.query<{ verification_code: string }>(
+        "UPDATE capture_runs r SET verification_code=NULL FROM (SELECT id, verification_code FROM capture_runs WHERE id=$1 AND verification_code IS NOT NULL FOR UPDATE) old WHERE r.id=old.id RETURNING old.verification_code",
+        [id],
+      )
+    ).rows[0]?.verification_code;
   }
   async claim() {
     // No automatic replay: a crashed worker may already have sent the chat.
@@ -111,7 +180,7 @@ export class RunStore {
   ) {
     const terminal = ["completed", "failed", "cancelled"].includes(status);
     const result = await this.pool.query(
-      `UPDATE capture_runs SET status=$2,detail=$3,sandbox_id=COALESCE($4,sandbox_id),artifact_key=COALESCE($5,artifact_key),credentials=CASE WHEN $6 THEN NULL ELSE credentials END WHERE id=$1 AND status NOT IN ('completed','failed','cancelled') RETURNING id`,
+      `UPDATE capture_runs SET status=$2,detail=$3,needs_code=false,sandbox_id=COALESCE($4,sandbox_id),artifact_key=COALESCE($5,artifact_key),credentials=CASE WHEN $6 THEN NULL ELSE credentials END,verification_code=CASE WHEN $6 THEN NULL ELSE verification_code END WHERE id=$1 AND status NOT IN ('completed','failed','cancelled') RETURNING id`,
       [id, status, detail, sandboxId ?? null, artifactKey ?? null, terminal],
     );
     return result.rowCount === 1;
@@ -142,15 +211,16 @@ export class RunStore {
       ).rowCount === 1
     );
   }
-  async fail(id: string) {
+  /** `reason` is a user-facing explanation; it must never contain page text or input values. */
+  async fail(id: string, reason?: string) {
     await this.pool.query(
-      "UPDATE capture_runs SET status=CASE WHEN artifact_key IS NOT NULL THEN 'completed' ELSE 'failed' END, detail=CASE WHEN artifact_key IS NOT NULL THEN 'Source capture saved; browser cleanup is pending.' ELSE 'Login or capture could not be verified. Check credentials, MFA, enabled origins, and the chat URL. Review the site before retrying; a message may already have been sent.' END, credentials=NULL WHERE id=$1 AND status NOT IN ('completed','failed','cancelled')",
-      [id],
+      "UPDATE capture_runs SET status=CASE WHEN artifact_key IS NOT NULL THEN 'completed' ELSE 'failed' END, detail=CASE WHEN artifact_key IS NOT NULL THEN 'Source capture saved; browser cleanup is pending.' ELSE COALESCE($2, 'Login or capture could not be verified. Check credentials, MFA, enabled origins, and the chat URL. Review the site before retrying; a message may already have been sent.') END, credentials=NULL, verification_code=NULL, needs_code=false WHERE id=$1 AND status NOT IN ('completed','failed','cancelled')",
+      [id, reason ?? null],
     );
   }
   async cancel(id: string, owner: string) {
     await this.pool.query(
-      "UPDATE capture_runs SET status='cancelled', detail='Cancelled. No further actions will be started.', credentials=NULL WHERE id=$1 AND owner=$2 AND status NOT IN ('completed','failed','cancelled')",
+      "UPDATE capture_runs SET status='cancelled', detail='Cancelled. No further actions will be started.', credentials=NULL, verification_code=NULL, needs_code=false WHERE id=$1 AND owner=$2 AND status NOT IN ('completed','failed','cancelled')",
       [id, owner],
     );
   }
@@ -160,6 +230,10 @@ export class RunStore {
     );
     await this.pool.query(
       "DELETE FROM capture_runs WHERE expires_at < now() AND NOT cleanup_pending",
+    );
+    // The last frame explains a finished run; keep it briefly, not for the run's lifetime.
+    await this.pool.query(
+      "DELETE FROM capture_frames f USING capture_runs r WHERE r.id=f.run_id AND r.status IN ('completed','failed','cancelled') AND f.captured_at < now()-interval '2 hours'",
     );
     return (
       await this.pool.query<StoredRun>(

@@ -99,3 +99,17 @@ export async function publicAddresses(
     ),
   ];
 }
+
+/** A one-time sign-in code the owner types while the browser waits. Bound to
+ * its run and short-lived, like the credential envelope. */
+export function sealCode(code: string, runId: string, key: string) {
+  return encryptCredentials(
+    { email: "", password: code },
+    `${runId}:code`,
+    key,
+    Date.now() + 5 * 60_000,
+  );
+}
+export function openCode(sealed: string, runId: string, key: string) {
+  return decryptCredentials(sealed, `${runId}:code`, key).password;
+}

@@ -31,6 +31,11 @@ export async function GET(
         status: run.status,
         detail: run.detail,
         hasArtifact: !!run.artifact_key,
+        needsCode: run.needs_code,
+        step: run.step,
+        pageUrl: run.page_url,
+        frameAt: run.frame_at?.getTime() ?? null,
+        createdAt: run.created_at.getTime(),
       },
       { headers: privateHeaders },
     );

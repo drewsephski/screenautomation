@@ -2,13 +2,41 @@ import { createServer } from "node:http";
 import { connect, type Socket } from "node:net";
 import { publicAddresses } from "@repo/jobs/security";
 
+/** Approved origins are exact (`https://host`) or one wildcard label prefix
+ * (`https://*.client.protect.clerk.com`) for services that mint a hostname per
+ * visitor. A wildcard never matches its bare suffix or a custom port. */
+export function originAllowed(origin: string, patterns: string[]) {
+  return patterns.some((pattern) => {
+    if (!pattern.startsWith("https://*.")) return pattern === origin;
+    const suffix = pattern.slice("https://*".length);
+    const url = new URL(origin);
+    return (
+      url.protocol === "https:" &&
+      !url.port &&
+      url.hostname.endsWith(suffix) &&
+      url.hostname.length > suffix.length
+    );
+  });
+}
+function destinationFor(
+  destinations: Record<string, string[]>,
+  origin: string,
+) {
+  if (destinations[origin]) return destinations[origin];
+  const pattern = Object.keys(destinations).find(
+    (key) => key.startsWith("https://*.") && originAllowed(origin, [key]),
+  );
+  return pattern ? destinations[pattern] : undefined;
+}
+
 /** Every HTTPS destination, including redirects, needs a CONNECT tunnel. Dial
  * only the previously validated public IP, never a second DNS resolution. */
 export async function startEgressProxy(destinations: Record<string, string[]>) {
   for (const [origin, addresses] of Object.entries(destinations)) {
+    const exact = origin.replace("https://*.", "https://");
     if (
-      new URL(origin).origin !== origin ||
-      new URL(origin).protocol !== "https:" ||
+      new URL(exact).origin !== exact ||
+      new URL(exact).protocol !== "https:" ||
       !addresses.length
     )
       throw new Error("Invalid proxy destination");
@@ -38,7 +66,7 @@ export async function startEgressProxy(destinations: Record<string, string[]>) {
       client.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
     }
-    const addresses = destinations[origin];
+    const addresses = destinationFor(destinations, origin);
     if (!addresses?.length) {
       client.end("HTTP/1.1 403 Forbidden\r\n\r\n");
       return;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chromium } from "playwright";
-import { startEgressProxy } from "./proxy.ts";
+import { originAllowed, startEgressProxy } from "./proxy.ts";
 
 test("redirects cannot connect to unapproved origins, even when route continuation would bypass interception", async () => {
   const proxy = await startEgressProxy({
@@ -28,4 +28,29 @@ test("redirects cannot connect to unapproved origins, even when route continuati
     await browser.close();
     await proxy.close();
   }
+});
+
+test("wildcard origins match one generated subdomain, never the bare suffix, other hosts, or custom ports", () => {
+  const patterns = [
+    "https://kraftybot.app",
+    "https://*.client.protect.clerk.com",
+  ];
+  assert.equal(originAllowed("https://kraftybot.app", patterns), true);
+  assert.equal(
+    originAllowed("https://1-abc-p.client.protect.clerk.com", patterns),
+    true,
+  );
+  assert.equal(
+    originAllowed("https://client.protect.clerk.com", patterns),
+    false,
+  );
+  assert.equal(
+    originAllowed("https://1-abc-p.client.protect.clerk.com:8443", patterns),
+    false,
+  );
+  assert.equal(
+    originAllowed("https://evilclient.protect.clerk.com", patterns),
+    false,
+  );
+  assert.equal(originAllowed("https://sub.kraftybot.app", patterns), false);
 });

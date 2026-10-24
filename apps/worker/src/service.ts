@@ -7,6 +7,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { RunStore } from "@repo/jobs";
 import { captureRun } from "./capture.ts";
 import { purgeExpiredCaptures } from "./retention.ts";
+import { failureReason } from "./failure.ts";
 
 for (const name of [
   "DATABASE_URL",
@@ -75,8 +76,9 @@ try {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         continue;
       }
+      const progress = { phase: "provisioning" };
       try {
-        const key = await captureRun(run, store, daytona, s3);
+        const key = await captureRun(run, store, daytona, s3, progress);
         await store.update(
           run.id,
           "completed",
@@ -84,10 +86,19 @@ try {
           undefined,
           key,
         );
-      } catch {
-        await store.fail(run.id);
+      } catch (error) {
+        const reason = failureReason(error, progress.phase);
+        await store.fail(run.id, reason);
+        // Worker-side errors carry provider/status text, never credentials or page content.
         console.error(
-          JSON.stringify({ event: "capture_failed", runId: run.id }),
+          JSON.stringify({
+            event: "capture_failed",
+            runId: run.id,
+            phase: progress.phase,
+            reason,
+            error:
+              error instanceof Error ? error.message.slice(0, 300) : undefined,
+          }),
         );
       }
     } catch {

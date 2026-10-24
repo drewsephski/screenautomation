@@ -6,25 +6,39 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   decryptCredentials,
+  openCode,
   publicAddresses,
   type StoredRun,
   type RunStore,
 } from "@repo/jobs";
 import { CaptureManifest } from "@repo/contracts";
 import { captureLifecycle } from "./lifecycle.ts";
+import { CaptureFailure } from "./failure.ts";
+
+const root = "/tmp/screen-studio";
+interface RemoteStatus {
+  mode: "login" | "capture";
+  step: string;
+  state: "running" | "needs-code" | "failed";
+  url: string | null;
+  codeRequests: number;
+  codeKind?: "email" | "authenticator";
+}
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function captureRun(
   run: StoredRun,
   store: RunStore,
   daytona: Daytona,
   s3: S3Client,
+  progress: { phase: string } = { phase: "provisioning" },
 ) {
   const directory = await mkdtemp(join(tmpdir(), "screen-studio-"));
   let sandbox: Sandbox | undefined;
@@ -45,10 +59,71 @@ export async function captureRun(
       heartbeatRunning = false;
     }
   }, 10000);
+  // Live preview: relay the desktop and the browser's current step to the owner.
+  let desktopReady = false;
+  let monitoring = true;
+  let live: RemoteStatus | undefined;
+  async function readStatus() {
+    try {
+      live = JSON.parse(
+        (await sandbox!.fs.downloadFile(`${root}/status.json`, 10)).toString(),
+      );
+    } catch {
+      // Not written yet, or mid-replacement; keep the previous status.
+    }
+    return live;
+  }
+  const monitor = (async () => {
+    while (monitoring) {
+      const started = Date.now();
+      if (sandbox && desktopReady && !aborted)
+        try {
+          await readStatus();
+          const shot = await sandbox.computerUse.screenshot.takeCompressed({
+            format: "jpeg",
+            quality: 60,
+            scale: 0.5,
+            showCursor: true,
+          });
+          if (monitoring && shot.screenshot)
+            await store.saveFrame(
+              run.id,
+              Buffer.from(shot.screenshot, "base64"),
+              live?.step ?? "Desktop ready",
+              live?.url ?? null,
+            );
+        } catch {
+          // A missed frame only delays the preview.
+        }
+      await sleep(Math.max(300, 1200 - (Date.now() - started)));
+    }
+  })();
+  /** Stop the preview on the browser's own failure screen and return its reason. */
+  async function remoteFailure() {
+    monitoring = false;
+    let reason: string | undefined;
+    try {
+      const failure = JSON.parse(
+        (await sandbox!.fs.downloadFile(`${root}/failure.json`, 10)).toString(),
+      );
+      if (typeof failure.error === "string") reason = failure.error;
+      const image = await sandbox!.fs.downloadFile(`${root}/failure.jpg`, 20);
+      await store.saveFrame(
+        run.id,
+        image,
+        failure.step ?? null,
+        live?.url ?? null,
+      );
+    } catch {
+      // Fall back to the phase explanation.
+    }
+    return reason ? new CaptureFailure(reason) : undefined;
+  }
   async function checkpoint(
     status: Parameters<RunStore["update"]>[1],
     detail: string,
   ) {
+    progress.phase = status;
     if (aborted || !(await store.update(run.id, status, detail, sandbox?.id)))
       throw new Error("Run cancelled or lease lost");
   }
@@ -75,16 +150,25 @@ export async function captureRun(
           throw new Error("Target is not enabled");
         const configured = (
           process.env.BROWSER_ALLOWED_ORIGINS ??
-          "https://kraftybot.app,https://clerk.kraftybot.app,https://img.clerk.com,https://api.trigger.dev,https://cdn.protect.clerk.com"
+          "https://kraftybot.app,https://clerk.kraftybot.app,https://img.clerk.com,https://api.trigger.dev,https://cdn.protect.clerk.com,https://*.client.protect.clerk.com"
         ).split(",");
         const origins = [...new Set([targetOrigin, ...configured])];
+        progress.phase = "network";
         const destinations = Object.fromEntries(
           await Promise.all(
             origins.map(
               async (origin) =>
                 [
                   origin,
-                  (await publicAddresses(origin))
+                  // A wildcard is pinned to what one generated hostname resolves to.
+                  (
+                    await publicAddresses(
+                      origin.replace(
+                        "https://*.",
+                        `https://probe-${randomBytes(6).toString("hex")}.`,
+                      ),
+                    )
+                  )
                     .filter((cidr) => !cidr.includes(":"))
                     .map((cidr) => cidr.split("/")[0]!),
                 ] as const,
@@ -99,10 +183,14 @@ export async function captureRun(
           ),
         ];
         if (!cidrs.length || cidrs.length > 10)
-          throw new Error(
-            "Daytona supports at most ten public IPv4 CIDRs; reduce the approved origins",
+          throw new CaptureFailure(
+            `The approved origins resolve to ${cidrs.length} addresses; the browser firewall allows at most ten. Ask the studio owner to reduce BROWSER_ALLOWED_ORIGINS.`,
           );
-        if (!run.credentials) throw new Error("Credentials expired");
+        progress.phase = "provisioning";
+        if (!run.credentials)
+          throw new CaptureFailure(
+            "The sign-in details expired before a browser was free. Start a new capture.",
+          );
         const credentials = decryptCredentials(
           run.credentials,
           run.id,
@@ -117,7 +205,8 @@ export async function captureRun(
             networkAllowList: cidrs.join(","),
             autoStopInterval: 5,
             autoDeleteInterval: 0,
-            ttlMinutes: 15,
+            // Room for a verification code: login may wait five minutes for the owner.
+            ttlMinutes: 25,
             labels: { app: "screen-studio", run: run.id },
             envVars: {
               VNC_RESOLUTION: "1920x1080",
@@ -176,7 +265,74 @@ export async function captureRun(
           )
         )
           throw new Error("Unexpected desktop dimensions");
-        await execute("node /opt/capture/remote.mjs login", 120);
+        desktopReady = true;
+        await sandbox.process.createSession("login");
+        const login = await sandbox.process.executeSessionCommand(
+          "login",
+          {
+            command: "cd /opt/capture && node remote.mjs login",
+            runAsync: true,
+            suppressInputEcho: true,
+          },
+          30,
+        );
+        // Sign-in may pause for a one-time code the owner types into the studio.
+        let handledRequests = 0;
+        let asked = false;
+        const loginDeadline = Date.now() + 8 * 60_000;
+        for (;;) {
+          if (aborted) throw new Error("Run cancelled");
+          if (Date.now() > loginDeadline)
+            throw new CaptureFailure(
+              "Sign-in took longer than eight minutes and was stopped.",
+            );
+          const state = await sandbox.process.getSessionCommand(
+            "login",
+            login.cmdId!,
+          );
+          if (state.exitCode !== undefined && state.exitCode !== null) {
+            if (state.exitCode === 0) break;
+            throw (
+              (await remoteFailure()) ??
+              new CaptureFailure(
+                "Sign-in stopped unexpectedly. Check the last screen in the live preview, then try again.",
+              )
+            );
+          }
+          const current = await readStatus();
+          if (
+            current?.state === "needs-code" &&
+            current.codeRequests > handledRequests &&
+            !asked
+          ) {
+            asked = await store.requestCode(
+              run.id,
+              current.codeKind === "authenticator"
+                ? "Enter the code from your authenticator app to finish signing in."
+                : "The site emailed you a verification code. Enter it here to finish signing in.",
+            );
+          }
+          if (asked) {
+            const sealed = await store.takeCode(run.id);
+            if (sealed) {
+              await sandbox.fs.uploadFile(
+                Buffer.from(
+                  JSON.stringify({
+                    code: openCode(
+                      sealed,
+                      run.id,
+                      process.env.CREDENTIAL_ENCRYPTION_KEY!,
+                    ),
+                  }),
+                ),
+                `${root}/code.json`,
+              );
+              handledRequests = current?.codeRequests ?? handledRequests + 1;
+              asked = false;
+            }
+          }
+          await sleep(1000);
+        }
         await store.clearCredentials(run.id);
         await checkpoint(
           "rehearsing",
@@ -201,7 +357,11 @@ export async function captureRun(
             seconds + 5,
           );
         }
-        await waitForMarker("capture-ready", 60);
+        try {
+          await waitForMarker("capture-ready", 60);
+        } catch (error) {
+          throw (await remoteFailure()) ?? error;
+        }
         await checkpoint(
           "capturing",
           "Recording one chat message and its actual reply.",
@@ -216,7 +376,11 @@ export async function captureRun(
           Buffer.from("start"),
           "/tmp/screen-studio/capture-start",
         );
-        await waitForMarker("capture-finalized", 240);
+        try {
+          await waitForMarker("capture-finalized", 240);
+        } catch (error) {
+          throw (await remoteFailure()) ?? error;
+        }
         await sandbox.computerUse.recording.stop(recordingId);
         await waitForMarker("capture-done", 60);
         const result: unknown = JSON.parse(
@@ -353,6 +517,8 @@ export async function captureRun(
       },
       cleanup: async () => {
         clearInterval(heartbeat);
+        monitoring = false;
+        await monitor;
         if (sandbox) {
           if (recordingId)
             await sandbox.computerUse.recording
@@ -371,6 +537,8 @@ export async function captureRun(
     });
   } finally {
     clearInterval(heartbeat);
+    monitoring = false;
+    await monitor;
     try {
       await store.clearCredentials(run.id);
     } finally {

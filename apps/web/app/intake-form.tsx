@@ -1,17 +1,23 @@
 import type { FormEvent, RefObject } from "react";
 
+export const defaultUrl = "https://kraftybot.app";
+export const defaultMessage =
+  "In this chat only, write three short tips for planning a focused workday. Do not use any tools or contact anyone.";
+
 export function IntakeForm({
   form,
   submit,
   active,
   busy,
   error,
+  onDraft,
 }: {
   form: RefObject<HTMLFormElement | null>;
   submit: (event: FormEvent<HTMLFormElement>) => void;
   active: boolean;
   busy: boolean;
   error: string;
+  onDraft: (draft: { url: string; message: string }) => void;
 }) {
   return (
     <section className="intake panel" aria-labelledby="setup-title">
@@ -22,14 +28,24 @@ export function IntakeForm({
           <p>Start with a website you have permission to use.</p>
         </div>
       </div>
-      <form ref={form} onSubmit={submit}>
+      <form
+        ref={form}
+        onSubmit={submit}
+        onInput={(event) => {
+          const values = new FormData(event.currentTarget);
+          onDraft({
+            url: String(values.get("url") ?? ""),
+            message: String(values.get("message") ?? ""),
+          });
+        }}
+      >
         <fieldset disabled={active || busy}>
           <label htmlFor="url">Website URL</label>
           <input
             id="url"
             name="url"
             type="url"
-            defaultValue="https://kraftybot.app"
+            defaultValue={defaultUrl}
             required
             maxLength={2048}
             placeholder="https://your-product.com"
@@ -74,7 +90,7 @@ export function IntakeForm({
             rows={3}
             required
             maxLength={1000}
-            defaultValue="In this chat only, write three short tips for planning a focused workday. Do not use any tools or contact anyone."
+            defaultValue={defaultMessage}
           />
           <p className="field-note">
             One chat message. No payments, deletions, or messages to other

@@ -1,9 +1,16 @@
+import { LivePreview } from "./live-preview";
+
 export type Run = {
   id: string;
   url: string;
   status: string;
   detail: string;
   hasArtifact: boolean;
+  needsCode?: boolean;
+  step?: string | null;
+  pageUrl?: string | null;
+  frameAt?: number | null;
+  createdAt?: number;
 };
 const stages = [
   "queued",
@@ -32,12 +39,18 @@ export function CaptureProgress({
   busy,
   statusError,
   cancel,
+  submitCode,
+  draftUrl,
+  draftMessage,
 }: {
   run: Run | null;
   active: boolean;
   busy: boolean;
   statusError: string;
   cancel: () => void;
+  submitCode: (code: string) => Promise<string | null>;
+  draftUrl: string;
+  draftMessage: string;
 }) {
   return (
     <section className="output panel" aria-labelledby="capture-title">
@@ -45,42 +58,29 @@ export function CaptureProgress({
         <span className="step-number">02</span>
         <div>
           <h2 id="capture-title">Follow the take</h2>
-          <p>Every step, with its real result.</p>
-        </div>
-      </div>
-      <div
-        className={`capture-slate ${run?.status === "capturing" ? "recording" : ""}`}
-      >
-        <div className="slate-top">
-          <span>
-            <i />
-            {run?.status === "capturing" ? "RECORDING" : "BROWSER CAPTURE"}
-          </span>
-          <span>1920 × 1080</span>
-        </div>
-        <div className="slate-center">
-          <div className="frame-icon" aria-hidden="true">
-            <span>↗</span>
-          </div>
-          <h3>
-            {run
-              ? (labels[run.status] ?? "Preparing capture")
-              : "Your next take starts here"}
-          </h3>
           <p>
             {run
-              ? run.detail
-              : "Real clicks. Real output. A clean source recording to build your film around."}
+              ? "Watch the real browser, live, as each step happens."
+              : "A preview of the run. Start a capture to watch it live."}
           </p>
         </div>
-        <div className="slate-bottom">
-          <span>16:9</span>
-          <span>SILENT-FIRST · MP4 / WEBM</span>
-        </div>
+      </div>
+      <div className="preview-stage">
+        <LivePreview
+          run={run}
+          active={active}
+          draftUrl={draftUrl}
+          draftMessage={draftMessage}
+          submitCode={submitCode}
+        />
       </div>
       <div className="run-status" aria-live="polite" aria-atomic="true">
         <div className="status-heading">
-          <h3>{run ? "Run progress" : "A deliberate process"}</h3>
+          <h3>
+            {run
+              ? (labels[run.status] ?? "Run progress")
+              : "A deliberate process"}
+          </h3>
           {active && (
             <button onClick={cancel} disabled={busy} className="text-button">
               Cancel run
@@ -113,6 +113,7 @@ export function CaptureProgress({
             const done =
               !!run && stages.indexOf(run.status) > stages.indexOf(key!);
             const current = run?.status === key;
+            const waiting = current && key === "logging_in" && run?.needsCode;
             return (
               <li
                 key={key}
@@ -123,12 +124,23 @@ export function CaptureProgress({
                 </span>
                 <div>
                   <strong>{title}</strong>
-                  <p>{note}</p>
+                  <p>
+                    {waiting
+                      ? "Waiting for your verification code."
+                      : current && run?.step
+                        ? run.step
+                        : note}
+                  </p>
                 </div>
               </li>
             );
           })}
         </ol>
+        {run?.status === "failed" && (
+          <p className="error-message" role="alert">
+            {run.detail}
+          </p>
+        )}
         {statusError && (
           <p className="error-message" role="alert">
             {statusError}

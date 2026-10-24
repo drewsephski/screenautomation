@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { IntakeForm } from "./intake-form";
+import { IntakeForm, defaultMessage, defaultUrl } from "./intake-form";
 import { CaptureProgress, type Run } from "./capture-progress";
 import {
   useEffect,
@@ -32,6 +32,10 @@ export function CaptureStudio() {
   const [error, setError] = useState("");
   const [statusError, setStatusError] = useState("");
   const form = useRef<HTMLFormElement>(null);
+  const [draft, setDraft] = useState({
+    url: defaultUrl,
+    message: defaultMessage,
+  });
   const terminal =
     !!run && ["completed", "failed", "cancelled"].includes(run.status);
   useEffect(() => {
@@ -58,7 +62,8 @@ export function CaptureStudio() {
         if (!controller.signal.aborted)
           setStatusError("Connection interrupted. Reconnecting to your run…");
       }
-      if (!controller.signal.aborted) timer = setTimeout(poll, 3000);
+      // Quick polling keeps the live preview close to the real browser.
+      if (!controller.signal.aborted) timer = setTimeout(poll, 1200);
     }
     void poll();
     return () => {
@@ -101,6 +106,7 @@ export function CaptureStudio() {
         status: "queued",
         detail: "Waiting for a browser",
         hasArtifact: false,
+        createdAt: Date.now(),
       };
       setRun(next);
       saveRunId(data.id);
@@ -132,6 +138,34 @@ export function CaptureStudio() {
       setStatusError("Could not cancel the run. Try again.");
     } finally {
       setBusy(false);
+    }
+  }
+  async function submitCode(code: string) {
+    if (!runId) return "This run has ended.";
+    try {
+      const response = await fetch(`/api/runs/${runId}/code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (response.ok) {
+        setRun((current) =>
+          current
+            ? {
+                ...current,
+                needsCode: false,
+                detail: "Code received. Finishing sign-in.",
+              }
+            : current,
+        );
+        return null;
+      }
+      return (
+        ((await response.json()) as { error?: string }).error ??
+        "Could not send the code."
+      );
+    } catch {
+      return "Could not reach the studio. Try again.";
     }
   }
   const active = !!runId && !terminal;
@@ -170,6 +204,7 @@ export function CaptureStudio() {
             active={active}
             busy={busy}
             error={error}
+            onDraft={setDraft}
           />
           <CaptureProgress
             run={run}
@@ -177,12 +212,18 @@ export function CaptureStudio() {
             busy={busy}
             statusError={statusError}
             cancel={cancel}
+            submitCode={submitCode}
+            draftUrl={draft.url}
+            draftMessage={draft.message}
           />
         </div>
       </main>
       <footer>
         <span>Built around evidence, frame by frame.</span>
-        <span>Login screens are never recorded.</span>
+        <span>
+          Login screens are never recorded. The live view is visible only to
+          you.
+        </span>
       </footer>
     </div>
   );
