@@ -1,0 +1,10 @@
+{
+  "purpose": "synthetic-storage-preflight-not-product-evidence",
+  "startedAt": "2026-10-24T00:20:13.424Z",
+  "uploadVerified": true,
+  "privateAccessVerified": true,
+  "signedAccessVerified": true,
+  "signedExpiryVerified": true,
+  "cleanupVerified": true,
+  "finishedAt": "2026-10-24T00:20:21.489Z"
+}

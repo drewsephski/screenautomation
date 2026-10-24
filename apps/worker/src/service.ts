@@ -6,6 +6,7 @@ import {
 import { S3Client } from "@aws-sdk/client-s3";
 import { RunStore } from "@repo/jobs";
 import { captureRun } from "./capture.ts";
+import { purgeExpiredCaptures } from "./retention.ts";
 
 for (const name of [
   "DATABASE_URL",
@@ -27,9 +28,10 @@ const daytona = new Daytona({
 const s3 = new S3Client({
   endpoint: process.env.S3_ENDPOINT,
   region: process.env.S3_REGION ?? "auto",
-  forcePathStyle: true,
+  forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
 });
 let stopping = false;
+let nextRetentionAt = 0;
 process.on("SIGTERM", () => {
   stopping = true;
 });
@@ -38,6 +40,14 @@ process.on("SIGINT", () => {
 });
 try {
   while (!stopping) {
+    if (Date.now() >= nextRetentionAt) {
+      nextRetentionAt = Date.now() + 5 * 60_000;
+      try {
+        await purgeExpiredCaptures(s3, process.env.S3_BUCKET!);
+      } catch {
+        console.error(JSON.stringify({ event: "artifact_retention_failed" }));
+      }
+    }
     try {
       const expired = await store.expire();
       for (const run of expired) {

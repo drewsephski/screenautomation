@@ -56,3 +56,15 @@ The independent review found no material actionable hard-rule breach or heuristi
 The independent review found no material actionable spec defect or scope creep in this unit. It explicitly retained synchronized events and three consecutive real captures as unfulfilled acceptance gates.
 
 Standards: 0 findings. Spec: 0 findings. Repository lint/type checks, all 14 tests (including isolated PostgreSQL and hosted intake), remote bundles and production web build passed. A live Daytona synthetic run used the production helper and recorded a 16.665ms backward timestamp jump; both recordings fully decoded. Two preceding attempts failed because the initial implementation assumed ordered timestamps. Provider readback verified deletion of all three sandboxes. The reviewers did not rerun live tests; sanitized results are retained in `docs/evidence/daytona-frame-clock-2026-10-23.json`. This adds measurement evidence, not a real Krafty take or full-plan completion.
+
+## Railway storage adaptation
+
+The user approved the dedicated project and its paid web/worker/PostgreSQL/bucket resources. Current Railway buckets require virtual-host S3 addressing and do not support lifecycle rules, so the worker now performs a bounded, retryable 24-hour capture-object retention sweep. A real bucket preflight verified upload/hash, private and signed access, signature expiry and deletion of its unique synthetic object. The public web service has test-network allowlisting at Railway's edge, with only health checks exempt.
+
+### Standards
+
+The independent incremental review found no hard documented breach or material smell. Scoped lint, type checks and retention tests passed.
+
+### Spec
+
+The independent incremental review found no material actionable defect or scope creep. Retention remains eventual and requires an available worker; documentation states this limit. All 15 repository tests, root lint/types, browser bundles and the production web build passed locally. Hosted deployment, application download access and real Krafty capture gates remain separate verification steps. Standards: 0 findings. Spec: 0 findings.

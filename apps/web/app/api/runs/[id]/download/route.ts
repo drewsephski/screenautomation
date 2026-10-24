@@ -23,7 +23,7 @@ export async function GET(
     const client = new S3Client({
       endpoint: process.env.S3_ENDPOINT,
       region: process.env.S3_REGION ?? "auto",
-      forcePathStyle: true,
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
     });
     const url = await getSignedUrl(
       client,
