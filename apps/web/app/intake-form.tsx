@@ -96,6 +96,11 @@ export function IntakeForm({
             One chat message. No payments, deletions, or messages to other
             people.
           </p>
+          <p className="privacy-note">
+            When Claude discovery is enabled, your message and visible chat
+            titles and chat links are shared with Anthropic to choose an
+            existing chat. Provide an exact chat URL below to skip AI discovery.
+          </p>
           <details>
             <summary>Already have a specific chat page?</summary>
             <label htmlFor="chatUrl">

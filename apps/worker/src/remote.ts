@@ -11,8 +11,11 @@ import { chromium, type Page } from "playwright";
 import { CaptureManifest } from "@repo/contracts";
 import { SignInFailure, signInWithCredentials } from "./authenticate.ts";
 import { originAllowed, startEgressProxy } from "./proxy.ts";
+import { navigationUrl } from "./navigation-contract.ts";
 import { armReplyCompletion, waitForCompletedReply } from "./completion.ts";
 import { startBrowserRecording } from "./recording.ts";
+import { discoverChat } from "./discover.ts";
+import { requestNavigation } from "./navigation-mailbox.ts";
 
 interface Config {
   url: string;
@@ -23,6 +26,7 @@ interface Config {
   image: string;
   origins: string[];
   destinations: Record<string, string[]>;
+  claudeNavigation?: boolean;
 }
 const root = "/tmp/screen-studio";
 /** A failure reason written by us for the run owner; never page text. */
@@ -142,7 +146,44 @@ async function chatPage(page: Page) {
     throw new StepFailure(
       "The chat page redirected to a different website. Check the chat URL.",
     );
-  if (krafty && !config.chatUrl) {
+  if (config.claudeNavigation && !config.chatUrl && mode === "login") {
+    try {
+      await discoverChat(
+        page,
+        new URL(config.url).origin,
+        "login",
+        (observation) => requestNavigation(root, observation),
+        (label) => status(label),
+      );
+      if (new URL(page.url()).origin !== new URL(config.url).origin)
+        throw new Error("Unexpected discovered chat origin");
+      // Rehearsal reopens this exact verified URL without another inference or
+      // choosing a different conversation after recording has started.
+      await writeFile(
+        `${root}/discovered-chat.json`,
+        JSON.stringify({ url: page.url() }),
+        { mode: 0o600 },
+      );
+      return;
+    } catch {
+      throw new StepFailure(
+        "Claude could not safely open an existing chat. Check the worker's Claude configuration, or paste an exact chat URL to bypass discovery.",
+      );
+    }
+  }
+  if (config.claudeNavigation && !config.chatUrl && mode === "capture") {
+    const saved: { url: string } = JSON.parse(
+      await readFile(`${root}/discovered-chat.json`, "utf8"),
+    );
+    await page.goto(navigationUrl(saved.url, new URL(config.url).origin), {
+      waitUntil: "domcontentloaded",
+    });
+    if (new URL(page.url()).origin !== new URL(config.url).origin)
+      throw new StepFailure(
+        "The discovered chat redirected to a different website.",
+      );
+  }
+  if (krafty && !config.chatUrl && !config.claudeNavigation) {
     await page.waitForURL("**/workspace**", { timeout: 30000 }).catch(() => {
       throw new StepFailure(
         "Signed in, but the Krafty workspace didn't open. Try again, or paste a chat URL.",

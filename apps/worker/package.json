@@ -18,6 +18,7 @@
     "provider:check-network": "node --env-file-if-exists=../../.env.local scripts/network-check.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.2.0",
     "@aws-sdk/client-s3": "3.1016.0",
     "@aws-sdk/s3-request-presigner": "3.1016.0",
     "@daytonaio/sdk": "0.226.0",
@@ -25,7 +26,8 @@
     "@repo/contracts": "workspace:*",
     "@repo/jobs": "workspace:*",
     "esbuild": "0.25.12",
-    "playwright": "1.64.1"
+    "playwright": "1.64.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

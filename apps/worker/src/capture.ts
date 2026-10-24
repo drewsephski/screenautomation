@@ -21,6 +21,8 @@ import {
 import { CaptureManifest } from "@repo/contracts";
 import { captureLifecycle } from "./lifecycle.ts";
 import { CaptureFailure } from "./failure.ts";
+import { createClaudeNavigator } from "./claude.ts";
+import { NavigationObservation } from "./navigation-contract.ts";
 
 const root = "/tmp/screen-studio";
 interface RemoteStatus {
@@ -40,6 +42,11 @@ export async function captureRun(
   s3: S3Client,
   progress: { phase: string } = { phase: "provisioning" },
 ) {
+  // Validate opt-in configuration before allocating a billable sandbox.
+  const navigator = run.chat_url
+    ? undefined
+    : createClaudeNavigator(new URL(run.url).origin, run.message);
+  const navigationAbort = new AbortController();
   const directory = await mkdtemp(join(tmpdir(), "screen-studio-"));
   let sandbox: Sandbox | undefined;
   let recordingId: string | undefined;
@@ -51,10 +58,12 @@ export async function captureRun(
     try {
       if (!(await store.heartbeat(run.id))) {
         aborted = true;
+        navigationAbort.abort();
         if (sandbox) await daytona.delete(sandbox, 30, true);
       }
     } catch {
       aborted = true;
+      navigationAbort.abort();
     } finally {
       heartbeatRunning = false;
     }
@@ -62,6 +71,66 @@ export async function captureRun(
   // Live preview: relay the desktop and the browser's current step to the owner.
   let desktopReady = false;
   let monitoring = true;
+  let navigationHandled: string | undefined;
+  const navigationMonitor = (async () => {
+    while (monitoring) {
+      if (navigator && sandbox && desktopReady && !aborted) {
+        let request: unknown;
+        try {
+          request = JSON.parse(
+            (
+              await sandbox.fs.downloadFile(
+                `${root}/navigation-request.json`,
+                10,
+              )
+            ).toString(),
+          );
+        } catch {
+          // No discovery request yet. Atomic publication prevents partial JSON.
+        }
+        if (request) {
+          const parsed = NavigationObservation.safeParse(request);
+          if (parsed.success && parsed.data.id !== navigationHandled) {
+            navigationHandled = parsed.data.id;
+            let decision;
+            let error: string | undefined;
+            try {
+              decision = await navigator.decide(
+                parsed.data,
+                navigationAbort.signal,
+              );
+            } catch {
+              error =
+                "Claude navigation failed; check API access and run limits.";
+            }
+            if (monitoring && !aborted) {
+              await sandbox.fs.uploadFile(
+                Buffer.from(
+                  JSON.stringify({ id: navigationHandled, decision, error }),
+                ),
+                `${root}/navigation-response.tmp`,
+              );
+              await sandbox.process.executeCommand(
+                `mv ${root}/navigation-response.tmp ${root}/navigation-response.json`,
+                "/opt/capture",
+                undefined,
+                10,
+              );
+            }
+          }
+        }
+      }
+      await sleep(500);
+    }
+  })().catch(() => {
+    navigationAbort.abort();
+    console.error(
+      JSON.stringify({
+        event: "claude_navigation_transport_failed",
+        runId: run.id,
+      }),
+    );
+  });
   let live: RemoteStatus | undefined;
   async function readStatus() {
     try {
@@ -243,6 +312,7 @@ export async function captureRun(
               image: process.env.DAYTONA_SNAPSHOT,
               origins,
               destinations,
+              claudeNavigation: !!navigator,
             }),
           ),
           "/tmp/screen-studio/config.json",
@@ -334,6 +404,12 @@ export async function captureRun(
           await sleep(1000);
         }
         await store.clearCredentials(run.id);
+        if (navigator) {
+          await sandbox.fs.uploadFile(
+            Buffer.from(JSON.stringify(navigator.usage, null, 2)),
+            `${root}/output/claude-usage.json`,
+          );
+        }
         await checkpoint(
           "rehearsing",
           "Login verified. Preparing a fresh browser context.",
@@ -518,6 +594,8 @@ export async function captureRun(
       cleanup: async () => {
         clearInterval(heartbeat);
         monitoring = false;
+        navigationAbort.abort();
+        await navigationMonitor;
         await monitor;
         if (sandbox) {
           if (recordingId)
@@ -538,7 +616,17 @@ export async function captureRun(
   } finally {
     clearInterval(heartbeat);
     monitoring = false;
+    navigationAbort.abort();
+    await navigationMonitor;
     await monitor;
+    if (navigator)
+      console.info(
+        JSON.stringify({
+          event: "claude_navigation_usage",
+          runId: run.id,
+          ...navigator.usage,
+        }),
+      );
     try {
       await store.clearCredentials(run.id);
     } finally {
