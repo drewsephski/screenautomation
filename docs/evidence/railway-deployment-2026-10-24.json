@@ -1,0 +1,42 @@
+{
+  "purpose": "hosted-infrastructure-preflight-not-real-product-capture",
+  "verifiedAt": "2026-10-24T00:29:55.899Z",
+  "sourceCommit": "b2ee780",
+  "projectId": "e040bfbe-2398-4bf8-b0ed-71624b77acb0",
+  "environmentId": "03345a06-2c10-4b9a-9fc2-705a9e306829",
+  "url": "https://web-production-9eaad.up.railway.app",
+  "deployments": {
+    "web": {
+      "id": "6485e518-7510-4e41-b2d9-d672df57ee7e",
+      "status": "SUCCESS"
+    },
+    "worker": {
+      "id": "670a61ba-e75c-45e7-bc03-c425ef4311c8",
+      "status": "SUCCESS"
+    },
+    "postgres": {
+      "id": "70b03458-4b5a-45c8-8e27-5f57390f126f",
+      "status": "SUCCESS"
+    }
+  },
+  "checks": {
+    "authorizedNetworkPage": 200,
+    "health": 200,
+    "hostedIntakeIsolationDuplicateAndCancellation": "passed with synthetic credentials while worker had no deployment",
+    "realBucketRetentionPass": "passed; no expired capture objects present",
+    "edge": {
+      "purpose": "hosted-edge-access-preflight",
+      "healthStatus": 200,
+      "studioStatus": 403,
+      "cleanupVerified": true,
+      "sandboxId": "8b27ba9b-a892-414c-883b-19b103baa181"
+    }
+  },
+  "limitations": [
+    "No real website credentials submitted by agent",
+    "No real Krafty login/chat capture verified",
+    "Synthetic storage preflight is not a production capture upload",
+    "Signed app download of real capture and three consecutive captures remain pending",
+    "Actual billing and capture quality gate remain unproven"
+  ]
+}
