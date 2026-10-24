@@ -1,5 +1,9 @@
 # Hosted capture: first implementation vertical
 
+Optional Claude-powered existing-chat discovery is now implemented locally; see
+[the SDK research, setup, scope and verification boundaries](./claude-navigation.md).
+It does not establish the real-product capture quality gate or a production AI deployment.
+
 The user clarified the first deliverable: credentials belong in the deployed web app, so each user can let the browser sign in to their website. The default live benchmark is **kraftybot.app**, with explicit permission to send one chat message. This vertical brings forward the minimum durable intake from Stage 3; it does not declare Stage 0's quality gate complete.
 
 ## Implemented

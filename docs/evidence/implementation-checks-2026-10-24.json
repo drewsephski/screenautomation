@@ -1,0 +1,9 @@
+{
+  "lint": "passed all seven configured workspaces",
+  "typecheck": "passed all seven configured workspaces",
+  "workerTests": {"passed":22,"failed":0,"skipped":0},
+  "railwayDevelopmentQueueIntegration": {"passed":1,"failed":0,"skipped":0,"covers":["tenant isolation","atomic claim","cancellation","credential erasure","lease recovery","story approval ownership and one-time transition"]},
+  "webProductionBuild": "passed",
+  "approvedTourFilm": {"runId":"60484275-cbc0-4354-98c1-7f2e7f9a28a5","durationSeconds":19,"width":1920,"height":1080,"representativeFramesInspected":true,"fullDecodeVerified":true},
+  "limitations": ["Exact synchronization and publication readiness require owner review", "Expired-login test uses a controlled browser fixture, not live session revocation", "Neon retirement requires exact-project confirmation"]
+}

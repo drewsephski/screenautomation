@@ -1,13 +1,7 @@
+import { ZodError } from "zod";
 import { Daytona, type Sandbox } from "@daytonaio/sdk";
-import {
-  S3Client,
-  PutObjectCommand,
-  HeadObjectCommand,
-  GetObjectCommand,
-  DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
-import { createHash, randomBytes } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { randomBytes } from "node:crypto";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +15,11 @@ import {
 import { CaptureManifest } from "@repo/contracts";
 import { captureLifecycle } from "./lifecycle.ts";
 import { CaptureFailure } from "./failure.ts";
+import { createClaudeNavigator } from "./claude.ts";
+import { NavigationObservation } from "./navigation-contract.ts";
+import { TourObservation, tourPaths } from "./tour.ts";
+import { proposeTour } from "./director.ts";
+import { uploadVerifiedFile } from "./upload.ts";
 
 const root = "/tmp/screen-studio";
 interface RemoteStatus {
@@ -40,6 +39,21 @@ export async function captureRun(
   s3: S3Client,
   progress: { phase: string } = { phase: "provisioning" },
 ) {
+  // Validate opt-in configuration before allocating a billable sandbox.
+  const isTour = run.mode === "tour";
+  if (
+    isTour &&
+    (!process.env.ANTHROPIC_API_KEY ||
+      !tourPaths(new URL(run.url).origin).length)
+  )
+    throw new CaptureFailure(
+      "Product tours need Claude access and enabled read-only page paths.",
+    );
+  const navigator =
+    run.chat_url || isTour
+      ? undefined
+      : createClaudeNavigator(new URL(run.url).origin, run.message);
+  const navigationAbort = new AbortController();
   const directory = await mkdtemp(join(tmpdir(), "screen-studio-"));
   let sandbox: Sandbox | undefined;
   let recordingId: string | undefined;
@@ -51,10 +65,12 @@ export async function captureRun(
     try {
       if (!(await store.heartbeat(run.id))) {
         aborted = true;
+        navigationAbort.abort();
         if (sandbox) await daytona.delete(sandbox, 30, true);
       }
     } catch {
       aborted = true;
+      navigationAbort.abort();
     } finally {
       heartbeatRunning = false;
     }
@@ -62,6 +78,181 @@ export async function captureRun(
   // Live preview: relay the desktop and the browser's current step to the owner.
   let desktopReady = false;
   let monitoring = true;
+  let navigationHandled: string | undefined;
+  let tourHandled = false;
+  const navigationMonitor = (async () => {
+    while (monitoring) {
+      if (isTour && sandbox && desktopReady && !aborted && !tourHandled) {
+        let request: unknown;
+        try {
+          request = JSON.parse(
+            (
+              await sandbox.fs.downloadFile(`${root}/tour-request.json`, 10)
+            ).toString(),
+          );
+        } catch {
+          /* Not published yet. */
+        }
+        if (request) {
+          tourHandled = true;
+          try {
+            const observation = TourObservation.parse(request);
+            const { story, usage } = await proposeTour(
+              observation,
+              new URL(run.url).origin,
+              tourPaths(new URL(run.url).origin),
+              run.message,
+              navigationAbort.signal,
+            );
+            if (!(await store.proposeStory(run.id, story)))
+              throw new Error("Run cannot propose a story");
+            await sandbox.fs.uploadFile(
+              Buffer.from(JSON.stringify(usage, null, 2)),
+              `${root}/output/claude-usage.json`,
+            );
+            const deadline = Date.now() + 5 * 60000;
+            while (!(await store.storyApproved(run.id))) {
+              if (
+                !monitoring ||
+                aborted ||
+                navigationAbort.signal.aborted ||
+                Date.now() > deadline
+              )
+                throw new Error("Story review expired");
+              await sleep(1000);
+            }
+            await sandbox.fs.uploadFile(
+              Buffer.from(JSON.stringify({ story })),
+              `${root}/tour-response.tmp`,
+            );
+          } catch (cause) {
+            console.error(
+              JSON.stringify({
+                event: "tour_proposal_failed",
+                runId: run.id,
+                type: cause instanceof Error ? cause.name : "UnknownError",
+                validation:
+                  cause instanceof ZodError
+                    ? cause.issues.map((issue) => ({
+                        path: issue.path,
+                        code: issue.code,
+                      }))
+                    : undefined,
+                status:
+                  cause &&
+                  typeof cause === "object" &&
+                  "status" in cause &&
+                  typeof cause.status === "number"
+                    ? cause.status
+                    : undefined,
+              }),
+            );
+            if (monitoring && !aborted)
+              await sandbox.fs.uploadFile(
+                Buffer.from(JSON.stringify({ error: true })),
+                `${root}/tour-response.tmp`,
+              );
+          }
+          if (monitoring && !aborted)
+            await sandbox.process.executeCommand(
+              `mv ${root}/tour-response.tmp ${root}/tour-response.json`,
+              "/opt/capture",
+              undefined,
+              10,
+            );
+        }
+      }
+      if (navigator && sandbox && desktopReady && !aborted) {
+        let request: unknown;
+        try {
+          request = JSON.parse(
+            (
+              await sandbox.fs.downloadFile(
+                `${root}/navigation-request.json`,
+                10,
+              )
+            ).toString(),
+          );
+        } catch {
+          // No discovery request yet. Atomic publication prevents partial JSON.
+        }
+        if (request) {
+          const parsed = NavigationObservation.safeParse(request);
+          if (parsed.success && parsed.data.id !== navigationHandled) {
+            navigationHandled = parsed.data.id;
+            let decision;
+            let error: string | undefined;
+            try {
+              decision = await navigator.decide(
+                parsed.data,
+                navigationAbort.signal,
+              );
+              console.info(
+                JSON.stringify({
+                  event: "claude_navigation_decision",
+                  runId: run.id,
+                  observationId: parsed.data.id,
+                  linkCount: parsed.data.links.length,
+                  ready: parsed.data.ready,
+                  action: decision.action,
+                }),
+              );
+            } catch (cause) {
+              console.error(
+                JSON.stringify({
+                  event: "claude_navigation_failed",
+                  runId: run.id,
+                  observationId: parsed.data.id,
+                  linkCount: parsed.data.links.length,
+                  ready: parsed.data.ready,
+                  type: cause instanceof Error ? cause.name : "UnknownError",
+                  validation:
+                    cause instanceof ZodError
+                      ? cause.issues.map((issue) => ({
+                          path: issue.path,
+                          code: issue.code,
+                        }))
+                      : undefined,
+                  status:
+                    cause &&
+                    typeof cause === "object" &&
+                    "status" in cause &&
+                    typeof cause.status === "number"
+                      ? cause.status
+                      : undefined,
+                }),
+              );
+              error =
+                "Claude navigation failed; check API access and run limits.";
+            }
+            if (monitoring && !aborted) {
+              await sandbox.fs.uploadFile(
+                Buffer.from(
+                  JSON.stringify({ id: navigationHandled, decision, error }),
+                ),
+                `${root}/navigation-response.tmp`,
+              );
+              await sandbox.process.executeCommand(
+                `mv ${root}/navigation-response.tmp ${root}/navigation-response.json`,
+                "/opt/capture",
+                undefined,
+                10,
+              );
+            }
+          }
+        }
+      }
+      await sleep(500);
+    }
+  })().catch(() => {
+    navigationAbort.abort();
+    console.error(
+      JSON.stringify({
+        event: "claude_navigation_transport_failed",
+        runId: run.id,
+      }),
+    );
+  });
   let live: RemoteStatus | undefined;
   async function readStatus() {
     try {
@@ -233,6 +424,10 @@ export async function captureRun(
           "/opt/capture/remote-analysis.mjs",
         );
         await sandbox.fs.uploadFile(
+          new URL("../dist/remote-film.mjs", import.meta.url).pathname,
+          "/opt/capture/remote-film.mjs",
+        );
+        await sandbox.fs.uploadFile(
           Buffer.from(
             JSON.stringify({
               url: run.url,
@@ -243,6 +438,9 @@ export async function captureRun(
               image: process.env.DAYTONA_SNAPSHOT,
               origins,
               destinations,
+              claudeNavigation: !!navigator,
+              mode: run.mode ?? "chat",
+              tourPaths: tourPaths(targetOrigin),
             }),
           ),
           "/tmp/screen-studio/config.json",
@@ -334,6 +532,12 @@ export async function captureRun(
           await sleep(1000);
         }
         await store.clearCredentials(run.id);
+        if (navigator) {
+          await sandbox.fs.uploadFile(
+            Buffer.from(JSON.stringify(navigator.usage, null, 2)),
+            `${root}/output/claude-usage.json`,
+          );
+        }
         await checkpoint(
           "rehearsing",
           "Login verified. Preparing a fresh browser context.",
@@ -364,7 +568,9 @@ export async function captureRun(
         }
         await checkpoint(
           "capturing",
-          "Recording one chat message and its actual reply.",
+          isTour
+            ? "Recording the approved product story without submitting forms."
+            : "Recording one chat message and its actual reply.",
         );
         const recordRequestAt = Date.now();
         const recording = await sandbox.computerUse.recording.start(
@@ -414,6 +620,18 @@ export async function captureRun(
           "node --input-type=module -e \"import('./remote-analysis.mjs').then(async m=>{await m.analyzeMedia('/tmp/screen-studio/output/browser.webm','/tmp/screen-studio/output/browser-analysis');await m.analyzeMedia('/tmp/screen-studio/output/desktop.mp4','/tmp/screen-studio/output/desktop-analysis');})\"",
           180,
         );
+        await checkpoint(
+          "checking",
+          "Editing a short film from the verified capture.",
+        );
+        await execute(
+          "node --input-type=module -e \"import('./remote-film.mjs').then(m=>m.renderFilm('/tmp/screen-studio/output'))\"",
+          240,
+        );
+        await sandbox.fs.downloadFile(
+          `${root}/output/film.mp4`,
+          join(directory, "film.mp4"),
+        );
         // Collect reproducibility inputs, never browser storage, credentials, traces,
         // network headers, or arbitrary sandbox directories.
         await execute(
@@ -459,65 +677,38 @@ export async function captureRun(
         const bytes = (await stat(path)).size;
         if (!bytes || bytes > 512 * 1024 * 1024)
           throw new Error("Artifact is empty or too large");
-        return { path, bytes };
+        return { path, bytes, filmPath: join(directory, "film.mp4") };
       },
-      upload: async ({ path, bytes }) => {
+      upload: async ({ path, filmPath }) => {
         if (aborted || !(await store.heartbeat(run.id)))
           throw new Error("Run cancelled");
-        const hash = createHash("sha256");
-        for await (const chunk of createReadStream(path)) hash.update(chunk);
-        const checksum = hash.digest("hex");
         const key = `captures/${run.owner}/${run.id}/capture.tar.gz`;
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: key,
-            Body: createReadStream(path),
-            ContentLength: bytes,
-            ContentType: "application/gzip",
-            Metadata: { sha256: checksum },
-          }),
-        );
-        const saved = await s3.send(
-          new HeadObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }),
-        );
-        if (
-          saved.ContentLength !== bytes ||
-          saved.Metadata?.sha256 !== checksum
-        )
-          throw new Error("Upload verification failed");
-        const stored = await s3.send(
-          new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }),
-        );
-        if (!stored.Body) throw new Error("Uploaded object has no body");
-        const verification = createHash("sha256");
-        for await (const chunk of stored.Body as AsyncIterable<Uint8Array>)
-          verification.update(chunk);
-        if (verification.digest("hex") !== checksum)
-          throw new Error("Uploaded object checksum mismatch");
-        if (aborted || !(await store.heartbeat(run.id))) {
-          await s3.send(
-            new DeleteObjectCommand({
-              Bucket: process.env.S3_BUCKET,
-              Key: key,
-            }),
+        const filmKey = `captures/${run.owner}/${run.id}/film.mp4`;
+        const bucket = process.env.S3_BUCKET!;
+        try {
+          await uploadVerifiedFile(s3, bucket, key, path, "application/gzip");
+          await uploadVerifiedFile(s3, bucket, filmKey, filmPath, "video/mp4");
+          if (
+            aborted ||
+            !(await store.heartbeat(run.id)) ||
+            !(await store.saveArtifact(run.id, key, filmKey))
+          )
+            throw new Error("Run cancelled before artifact commit");
+          return key;
+        } catch (error) {
+          await Promise.allSettled(
+            [key, filmKey].map((Key) =>
+              s3.send(new DeleteObjectCommand({ Bucket: bucket, Key })),
+            ),
           );
-          throw new Error("Run cancelled");
+          throw error;
         }
-        if (!(await store.saveArtifact(run.id, key))) {
-          await s3.send(
-            new DeleteObjectCommand({
-              Bucket: process.env.S3_BUCKET,
-              Key: key,
-            }),
-          );
-          throw new Error("Run cancelled before artifact commit");
-        }
-        return key;
       },
       cleanup: async () => {
         clearInterval(heartbeat);
         monitoring = false;
+        navigationAbort.abort();
+        await navigationMonitor;
         await monitor;
         if (sandbox) {
           if (recordingId)
@@ -538,7 +729,17 @@ export async function captureRun(
   } finally {
     clearInterval(heartbeat);
     monitoring = false;
+    navigationAbort.abort();
+    await navigationMonitor;
     await monitor;
+    if (navigator)
+      console.info(
+        JSON.stringify({
+          event: "claude_navigation_usage",
+          runId: run.id,
+          ...navigator.usage,
+        }),
+      );
     try {
       await store.clearCredentials(run.id);
     } finally {

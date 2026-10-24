@@ -1,4 +1,13 @@
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import type { FormEvent, RefObject } from "react";
+import { useState } from "react";
 
 export const defaultUrl = "https://kraftybot.app";
 export const defaultMessage =
@@ -19,6 +28,7 @@ export function IntakeForm({
   error: string;
   onDraft: (draft: { url: string; message: string }) => void;
 }) {
+  const [mode, setMode] = useState("chat");
   return (
     <section className="intake panel" aria-labelledby="setup-title">
       <div className="panel-heading">
@@ -40,6 +50,28 @@ export function IntakeForm({
         }}
       >
         <fieldset disabled={active || busy}>
+          <label htmlFor="mode">What should we record?</label>
+          <Select
+            name="mode"
+            value={mode}
+            onValueChange={setMode}
+            disabled={active || busy}
+          >
+            <SelectTrigger id="mode" aria-describedby="mode-description">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="chat">A real chat and reply</SelectItem>
+                <SelectItem value="tour">A read-only product tour</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <p id="mode-description" className="field-note mode-description">
+            {mode === "tour"
+              ? "Review an AI-proposed story before recording product pages."
+              : "Record one message and the product’s real response."}
+          </p>
           <label htmlFor="url">Website URL</label>
           <input
             id="url"
@@ -83,7 +115,11 @@ export function IntakeForm({
               Use a prepared demo account.
             </p>
           </div>
-          <label htmlFor="message">Message to send</label>
+          <label htmlFor="message">
+            {mode === "tour"
+              ? "What should the story show?"
+              : "Message to send"}
+          </label>
           <textarea
             id="message"
             name="message"
@@ -93,31 +129,40 @@ export function IntakeForm({
             defaultValue={defaultMessage}
           />
           <p className="field-note">
-            One chat message. No payments, deletions, or messages to other
-            people.
+            {mode === "tour"
+              ? "Claude proposes up to three enabled product pages. Review the story before recording. No forms are submitted."
+              : "One chat message. No payments, deletions, or messages to other people."}
           </p>
-          <details>
-            <summary>Already have a specific chat page?</summary>
-            <label htmlFor="chatUrl">
-              Chat URL <span className="optional">optional</span>
-            </label>
-            <input
-              id="chatUrl"
-              name="chatUrl"
-              type="url"
-              maxLength={2048}
-              placeholder="https://your-product.com/chats/…"
-            />
-            <p className="field-note">
-              Must belong to the same website. Otherwise, the agent looks for an
-              existing chat.
-            </p>
-          </details>
+          <p className="privacy-note">
+            Claude receives your goal, visible page titles and enabled
+            navigation links. Your password and cookies stay outside the model.
+            An exact chat URL skips chat discovery.
+          </p>
+          {mode === "chat" && (
+            <details>
+              <summary>Already have a specific chat page?</summary>
+              <label htmlFor="chatUrl">
+                Chat URL <span className="optional">optional</span>
+              </label>
+              <input
+                id="chatUrl"
+                name="chatUrl"
+                type="url"
+                maxLength={2048}
+                placeholder="https://your-product.com/chats/…"
+              />
+              <p className="field-note">
+                Must belong to the same website. Otherwise, the agent looks for
+                an existing chat.
+              </p>
+            </details>
+          )}
           <label className="consent">
             <input name="consent" type="checkbox" required />
             <span>
-              I have permission to access this account, record its screen, and
-              send this chat message.
+              {mode === "tour"
+                ? "I have permission to access this account and record its approved product pages."
+                : "I have permission to access this account, record its screen, and send this chat message."}
             </span>
           </label>
           <button className="primary-button" type="submit">

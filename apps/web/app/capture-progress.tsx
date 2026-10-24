@@ -1,4 +1,5 @@
 import { LivePreview } from "./live-preview";
+import type { DemoStory } from "@repo/contracts";
 
 export type Run = {
   id: string;
@@ -11,11 +12,16 @@ export type Run = {
   pageUrl?: string | null;
   frameAt?: number | null;
   createdAt?: number;
+  hasFilm?: boolean;
+  mode?: "chat" | "tour";
+  story?: DemoStory | null;
+  storyApproved?: boolean;
 };
 const stages = [
   "queued",
   "provisioning",
   "logging_in",
+  "reviewing",
   "rehearsing",
   "capturing",
   "checking",
@@ -25,6 +31,7 @@ const labels: Record<string, string> = {
   queued: "Waiting for a browser",
   provisioning: "Preparing your browser",
   logging_in: "Signing in privately",
+  reviewing: "Review your story",
   rehearsing: "Checking the chat",
   capturing: "Recording the workflow",
   checking: "Checking the footage",
@@ -42,6 +49,7 @@ export function CaptureProgress({
   submitCode,
   draftUrl,
   draftMessage,
+  approveStory,
 }: {
   run: Run | null;
   active: boolean;
@@ -51,6 +59,7 @@ export function CaptureProgress({
   submitCode: (code: string) => Promise<string | null>;
   draftUrl: string;
   draftMessage: string;
+  approveStory: () => Promise<void>;
 }) {
   return (
     <section className="output panel" aria-labelledby="capture-title">
@@ -75,6 +84,32 @@ export function CaptureProgress({
         />
       </div>
       <div className="run-status" aria-live="polite" aria-atomic="true">
+        {run?.story && run.status === "reviewing" && (
+          <div className="story-review">
+            <h3>{run.story.title}</h3>
+            <p>{run.story.summary}</p>
+            <ol>
+              {run.story.scenes.map((scene) => (
+                <li key={scene.url}>
+                  <strong>{scene.caption}</strong>
+                  <p>{new URL(scene.url).pathname}</p>
+                </li>
+              ))}
+            </ol>
+            <p>
+              Only these pages will be recorded. No forms will be submitted.
+            </p>
+            <button
+              className="primary-button"
+              onClick={approveStory}
+              disabled={busy || run.storyApproved}
+            >
+              {run.storyApproved
+                ? "Approved — preparing…"
+                : "Approve story and record"}
+            </button>
+          </div>
+        )}
         <div className="status-heading">
           <h3>
             {run
@@ -97,12 +132,12 @@ export function CaptureProgress({
             [
               "rehearsing",
               "Check the workflow",
-              "Find a chat and verify the controls.",
+              "Verify the selected pages or chat controls.",
             ],
             [
               "capturing",
-              "Capture the conversation",
-              "Send once. Wait for the actual reply.",
+              "Capture the workflow",
+              "Record approved pages, or send once and wait for the real reply.",
             ],
             [
               "checking",
@@ -147,16 +182,38 @@ export function CaptureProgress({
           </p>
         )}
         {run?.hasArtifact && run.status === "completed" && (
-          <a className="download-button" href={`/api/runs/${run.id}/download`}>
-            Download source capture <span aria-hidden="true">↓</span>
-          </a>
+          <>
+            {run.hasFilm && (
+              <>
+                <video
+                  controls
+                  preload="metadata"
+                  style={{ width: "100%", borderRadius: 12 }}
+                  src={`/api/runs/${run.id}/film`}
+                  aria-label="Edited product film"
+                />
+                <a
+                  className="download-button"
+                  href={`/api/runs/${run.id}/film`}
+                >
+                  Download edited MP4 <span aria-hidden="true">↓</span>
+                </a>
+              </>
+            )}
+            <a
+              className="download-button"
+              href={`/api/runs/${run.id}/download`}
+            >
+              Download source capture <span aria-hidden="true">↓</span>
+            </a>
+          </>
         )}
       </div>
       <div className="scope-note">
-        <strong>First, get the footage right.</strong>
+        <strong>Real footage. A concise story.</strong>
         <p>
-          This beta records and verifies one conversation. Film editing and
-          export follow the capture-quality benchmark.
+          Review your 15–30 second film before publishing. Source recordings and
+          evidence stay available in the capture archive.
         </p>
       </div>
     </section>

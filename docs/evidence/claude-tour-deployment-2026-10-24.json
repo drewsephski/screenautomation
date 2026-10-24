@@ -1,0 +1,13 @@
+{
+  "projectId":"e040bfbe-2398-4bf8-b0ed-71624b77acb0",
+  "environmentId":"03345a06-2c10-4b9a-9fc2-705a9e306829",
+  "web":{"deploymentId":"30ac5f9d-1227-4b97-a997-9ae02a132c91","status":"SUCCESS"},
+  "worker":{"deploymentId":"437239f5-14cc-4f7c-9a29-4e1fa0866f02","status":"SUCCESS"},
+  "url":"https://web-production-9eaad.up.railway.app",
+  "model":"claude-haiku-5-5",
+  "productionDatabase":"Existing Railway Postgres; not replaced",
+  "publicHealthStatus":200,
+  "publicPrivateBetaGateStatus":403,
+  "releaseSource":"Isolated export of the working tree; secrets and capture artifacts excluded",
+  "gitCommitCreated":false
+}

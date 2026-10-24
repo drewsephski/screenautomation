@@ -33,22 +33,27 @@ function useFrames(run: Run | null) {
   const target = run?.frameAt
     ? `/api/runs/${run.id}/frame?t=${run.frameAt}`
     : null;
+  const runId = run?.id;
   useEffect(() => {
-    if (!target || !run) return;
+    if (!target || !runId) return;
     const image = new Image();
     image.onload = () =>
-      setFrames((current) => ({
-        runId: run.id,
-        srcs:
-          current.runId === run.id
-            ? [...current.srcs.slice(-1), target]
-            : [target],
-      }));
+      setFrames((current) => {
+        if (current.runId === runId && current.srcs.at(-1) === target)
+          return current;
+        return {
+          runId,
+          srcs:
+            current.runId === runId
+              ? [...current.srcs.slice(-1), target]
+              : [target],
+        };
+      });
     image.src = target;
     return () => {
       image.onload = null;
     };
-  }, [target, run]);
+  }, [target, runId]);
   return run && frames.runId === run.id ? frames.srcs : [];
 }
 

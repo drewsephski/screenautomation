@@ -88,6 +88,7 @@ export function CaptureStudio() {
           message: values.get("message"),
           chatUrl: values.get("chatUrl") || undefined,
           consent: values.get("consent") === "on",
+          mode: values.get("mode") || "chat",
         }),
       });
       const data = await response.json();
@@ -136,6 +137,26 @@ export function CaptureStudio() {
       );
     } catch {
       setStatusError("Could not cancel the run. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function approveStory() {
+    if (!runId) return;
+    setBusy(true);
+    setStatusError("");
+    try {
+      const response = await fetch(`/api/runs/${runId}/approve`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error();
+      setRun((current) =>
+        current ? { ...current, storyApproved: true } : current,
+      );
+    } catch {
+      setStatusError(
+        "Could not approve the story. Refresh its status and try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -193,8 +214,8 @@ export function CaptureStudio() {
             </h1>
           </div>
           <p className="intro-note">
-            Give the browser a place to go and a message to send. Capture a real
-            conversation, from the first keystroke to the reply.
+            Capture a real conversation or review an AI-proposed product tour.
+            Get a short film made from the actual screen recording.
           </p>
         </div>
         <div className="workspace">
@@ -213,6 +234,7 @@ export function CaptureStudio() {
             statusError={statusError}
             cancel={cancel}
             submitCode={submitCode}
+            approveStory={approveStory}
             draftUrl={draft.url}
             draftMessage={draft.message}
           />
