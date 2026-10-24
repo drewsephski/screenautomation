@@ -17,3 +17,13 @@ await build({
   format: "esm",
   target: "node22",
 });
+
+await build({
+  entryPoints: ["src/film.ts"],
+  outfile: "dist/remote-film.mjs",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  external: ["playwright", "playwright/*"],
+});

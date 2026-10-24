@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
-import { RunInput } from "@repo/contracts";
+import { RunInput, DemoStory } from "@repo/contracts";
 import { encryptCredentials } from "./security.ts";
+import { readFileSync } from "node:fs";
+import { checkServerIdentity } from "node:tls";
 
 export type RunStatus =
   | "queued"
   | "provisioning"
   | "logging_in"
   | "rehearsing"
+  | "reviewing"
   | "capturing"
   | "checking"
   | "completed"
@@ -28,6 +31,10 @@ export interface StoredRun {
   lease_until: Date | null;
   needs_code: boolean;
   verification_code: string | null;
+  mode: "chat" | "tour";
+  story: DemoStory | null;
+  story_approved: boolean;
+  film_key: string | null;
 }
 /** Latest desktop frame of an active run, shown only to its owner. */
 export interface LiveFrame {
@@ -40,8 +47,25 @@ export interface LiveFrame {
 export class RunStore {
   readonly pool: Pool;
   constructor(connectionString: string) {
+    // Railway's public TCP proxy presents the database's private-CA certificate.
+    // Trust only the CA obtained through authenticated provider SSH, and verify
+    // its certified internal hostname instead of weakening TLS verification.
+    const url = new URL(connectionString);
+    const caFile = process.env.DATABASE_SSL_CA_FILE;
+    const railwayTls = caFile && url.hostname.endsWith(".proxy.rlwy.net");
+    if (railwayTls) url.searchParams.delete("sslmode");
     this.pool = new Pool({
-      connectionString,
+      connectionString: railwayTls ? url.href : connectionString,
+      ...(railwayTls
+        ? {
+            ssl: {
+              ca: readFileSync(caFile, "utf8"),
+              checkServerIdentity: (_host, certificate) =>
+                checkServerIdentity("postgres.railway.internal", certificate),
+              rejectUnauthorized: true,
+            },
+          }
+        : {}),
       max: 5,
       connectionTimeoutMillis: 5000,
       statement_timeout: 10000,
@@ -56,6 +80,10 @@ export class RunStore {
     ); ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS cleanup_pending boolean NOT NULL DEFAULT true;
     ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS needs_code boolean NOT NULL DEFAULT false;
     ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS verification_code text;
+    ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'chat';
+    ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS story jsonb;
+    ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS story_approved boolean NOT NULL DEFAULT false;
+    ALTER TABLE capture_runs ADD COLUMN IF NOT EXISTS film_key text;
     CREATE INDEX IF NOT EXISTS capture_runs_queue ON capture_runs (created_at) WHERE status = 'queued';
     CREATE TABLE IF NOT EXISTS capture_frames (
       run_id uuid PRIMARY KEY REFERENCES capture_runs (id) ON DELETE CASCADE,
@@ -89,8 +117,16 @@ export class RunStore {
       if (Number(daily.rows[0]?.count) >= 20)
         throw new Error("Daily studio capture limit reached");
       await client.query(
-        "INSERT INTO capture_runs (id,owner,url,chat_url,message,status,detail,credentials) VALUES ($1,$2,$3,$4,$5,'queued','Waiting for a browser', $6)",
-        [id, owner, input.url, input.chatUrl ?? null, input.message, sealed],
+        "INSERT INTO capture_runs (id,owner,url,chat_url,message,status,detail,credentials,mode) VALUES ($1,$2,$3,$4,$5,'queued','Waiting for a browser', $6,$7)",
+        [
+          id,
+          owner,
+          input.url,
+          input.chatUrl ?? null,
+          input.message,
+          sealed,
+          input.mode,
+        ],
       );
       await client.query("COMMIT");
       return id;
@@ -201,15 +237,43 @@ export class RunStore {
       [id],
     );
   }
-  async saveArtifact(id: string, key: string) {
+  async saveArtifact(id: string, key: string, filmKey?: string) {
     return (
       (
         await this.pool.query(
-          "UPDATE capture_runs SET artifact_key=$2, detail='Capture saved; releasing the browser' WHERE id=$1 AND status='checking' RETURNING id",
-          [id, key],
+          "UPDATE capture_runs SET artifact_key=$2,film_key=$3, detail='Capture saved; releasing the browser' WHERE id=$1 AND status='checking' RETURNING id",
+          [id, key, filmKey ?? null],
         )
       ).rowCount === 1
     );
+  }
+  async proposeStory(id: string, raw: unknown) {
+    const story = DemoStory.parse(raw);
+    return (
+      (
+        await this.pool.query(
+          "UPDATE capture_runs SET story=$2::jsonb,status='reviewing',detail='Review the proposed story before recording.',credentials=NULL WHERE id=$1 AND status='logging_in' AND mode='tour' RETURNING id",
+          [id, JSON.stringify(story)],
+        )
+      ).rowCount === 1
+    );
+  }
+  async approveStory(id: string, owner: string) {
+    return (
+      (
+        await this.pool.query(
+          "UPDATE capture_runs SET story_approved=true,detail='Story approved. Preparing the recording.' WHERE id=$1 AND owner=$2 AND status='reviewing' AND story IS NOT NULL AND NOT story_approved RETURNING id",
+          [id, owner],
+        )
+      ).rowCount === 1
+    );
+  }
+  async storyApproved(id: string) {
+    const { rows } = await this.pool.query<{ story_approved: boolean }>(
+      "SELECT story_approved FROM capture_runs WHERE id=$1 AND status='reviewing'",
+      [id],
+    );
+    return rows[0]?.story_approved === true;
   }
   /** `reason` is a user-facing explanation; it must never contain page text or input values. */
   async fail(id: string, reason?: string) {

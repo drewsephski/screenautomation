@@ -175,6 +175,7 @@ label {
   margin: 0 0 8px;
 }
 input:not([type="checkbox"]),
+select,
 textarea {
   width: 100%;
   border: 1px solid #d5dce8;
@@ -191,6 +192,7 @@ textarea::placeholder {
   color: #8d98ab;
 }
 input:focus,
+select:focus,
 textarea:focus {
   border-color: var(--blue);
 }

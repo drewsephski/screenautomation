@@ -1,0 +1,31 @@
+{
+  "test": "live-haiku-browser-navigation",
+  "syntheticWebsite": true,
+  "liveAnthropicAPI": true,
+  "passed": true,
+  "at": "2026-10-24T15:45:40.193Z",
+  "elapsedMs": 4372,
+  "actions": [
+    {
+      "page": "https://product.example/workspace",
+      "decision": {
+        "action": "open",
+        "index": 1
+      }
+    },
+    {
+      "page": "https://product.example/chats/workday",
+      "decision": {
+        "action": "ready"
+      }
+    }
+  ],
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "calls": 2,
+    "inputTokens": 1681,
+    "outputTokens": 86
+  },
+  "mutatingRequests": 0,
+  "chatMessageSent": false
+}

@@ -1,0 +1,22 @@
+{
+  "at": "2026-10-24T18:42:02.274Z",
+  "runId": "60484275-cbc0-4354-98c1-7f2e7f9a28a5",
+  "mode": "tour",
+  "approved": true,
+  "story": {
+    "title": "Krafty workspace and activity tour",
+    "scenes": [
+      {
+        "url": "https://kraftybot.app/workspace",
+        "caption": "Workspace home"
+      },
+      {
+        "url": "https://kraftybot.app/activity",
+        "caption": "Activity log"
+      }
+    ],
+    "summary": "A short walkthrough of the workspace and activity pages. Read-only: no settings changed, no messages sent."
+  },
+  "status": "completed",
+  "hasFilm": true
+}

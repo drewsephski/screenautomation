@@ -1,0 +1,35 @@
+{
+  "at": "2026-10-24T18:47:33.474Z",
+  "runId": "71d24753-f69b-499a-be5e-5f2b4e90d07e",
+  "mode": "tour",
+  "approved": true,
+  "story": {
+    "title": "Krafty workspace tour",
+    "scenes": [
+      {
+        "url": "https://kraftybot.app/workspace",
+        "caption": "Workspace home"
+      },
+      {
+        "url": "https://kraftybot.app/activity",
+        "caption": "Activity feed"
+      }
+    ],
+    "summary": "A short look at the workspace and activity views. Read-only: no settings changed, no messages sent."
+  },
+  "status": "completed",
+  "hasFilm": true,
+  "transport": "Authenticated Railway SSH to the hosted web service; public private-beta gate unchanged",
+  "filmOwnerIsolation": true,
+  "cleanup": {
+    "credentialsCleared": true,
+    "sandboxCleared": true,
+    "cleanupPending": false
+  },
+  "downloadedFilm": {
+    "durationSeconds": 19,
+    "width": 1920,
+    "height": 1080,
+    "fullLocalDecodePassed": true
+  }
+}

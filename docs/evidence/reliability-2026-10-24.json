@@ -1,0 +1,51 @@
+{
+  "threeConsecutiveRealCaptures": true,
+  "runs": [
+    {
+      "index": 1,
+      "runId": "3586c756-e23a-4fb3-8a6e-30d5637a817b",
+      "status": "completed",
+      "bytes": 11604031,
+      "completedAt": "2026-10-24T18:18:50.162Z",
+      "sourceHashVerified": true,
+      "browserSeconds": 28.017,
+      "desktopSeconds": 30.1,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "sends": 1
+    },
+    {
+      "index": 2,
+      "runId": "79e9e898-e706-4f81-8a42-d9c36a34ac27",
+      "status": "completed",
+      "bytes": 9782068,
+      "completedAt": "2026-10-24T18:20:27.130Z",
+      "sourceHashVerified": true,
+      "browserSeconds": 19.2,
+      "desktopSeconds": 20.933333,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "sends": 1
+    },
+    {
+      "index": 3,
+      "runId": "0e09ca97-9de8-4ea2-89fe-5493c43ca09b",
+      "status": "completed",
+      "bytes": 9834358,
+      "completedAt": "2026-10-24T18:23:45.629Z",
+      "sourceHashVerified": true,
+      "browserSeconds": 21.034,
+      "desktopSeconds": 24.166667,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "sends": 1
+    }
+  ],
+  "qualityReview": "All three final reply screenshots inspected: authenticated product UI and complete responses visible. Exact temporal alignment and publish approval remain human review tasks."
+}

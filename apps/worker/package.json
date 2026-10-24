@@ -11,8 +11,8 @@
     "check-types": "tsc --noEmit",
     "test": "node --test src/*.test.ts",
     "bundle": "node scripts/bundle.mjs",
-    "start": "node src/service.ts",
-    "migrate": "node src/migrate.ts",
+    "start": "node --env-file-if-exists=../../.env.local src/service.ts",
+    "migrate": "node --env-file-if-exists=../../.env.local src/migrate.ts",
     "provider:check": "node --env-file-if-exists=../../.env.local scripts/provider-check.mjs",
     "provider:check-failure": "node --env-file-if-exists=../../.env.local scripts/capture-failure-check.mjs",
     "provider:check-network": "node --env-file-if-exists=../../.env.local scripts/network-check.mjs"

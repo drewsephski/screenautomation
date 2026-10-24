@@ -11,7 +11,14 @@ test(
     const owner = randomUUID();
     const other = randomUUID();
     try {
-      await store.migrate();
+      const migrations = process.env.TEST_DIRECT_DATABASE_URL
+        ? new RunStore(process.env.TEST_DIRECT_DATABASE_URL)
+        : store;
+      try {
+        await migrations.migrate();
+      } finally {
+        if (migrations !== store) await migrations.close();
+      }
       const id = await store.create(
         owner,
         {
@@ -63,6 +70,37 @@ test(
         (await store.get(recovered, owner))?.artifact_key,
         "captures/recovered.tar.gz",
       );
+      const tour = await store.create(
+        owner,
+        {
+          url: "https://kraftybot.app",
+          email: "demo@example.com",
+          password: "hidden",
+          message: "Show the workspace",
+          mode: "tour",
+          consent: true,
+        },
+        randomBytes(32).toString("base64"),
+      );
+      await store.claim();
+      await store.update(tour, "logging_in", "Authenticated");
+      assert.equal(
+        await store.proposeStory(tour, {
+          title: "Workspace tour",
+          summary: "Visit the observed workspace.",
+          scenes: [
+            { url: "https://kraftybot.app/workspace", caption: "Workspace" },
+          ],
+        }),
+        true,
+      );
+      assert.equal((await store.get(tour, owner))?.credentials, null);
+      assert.equal(await store.approveStory(tour, other), false);
+      assert.equal(await store.storyApproved(tour), false);
+      assert.equal(await store.approveStory(tour, owner), true);
+      assert.equal(await store.approveStory(tour, owner), false);
+      await store.cancel(tour, owner);
+      assert.equal(await store.storyApproved(tour), false);
     } finally {
       await store.pool.query("DELETE FROM capture_runs WHERE owner=$1", [
         owner,

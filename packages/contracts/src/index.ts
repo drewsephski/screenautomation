@@ -127,6 +127,25 @@ export const WorkflowPlan = z
 export type WorkflowPlan = z.infer<typeof WorkflowPlan>;
 export type Target = z.infer<typeof Target>;
 
+export const DemoStory = z
+  .object({
+    title: z.string().trim().min(1).max(80),
+    summary: z.string().trim().min(1).max(240),
+    scenes: z
+      .array(
+        z
+          .object({
+            url: z.url().max(2048),
+            caption: z.string().trim().min(1).max(80),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(3),
+  })
+  .strict();
+export type DemoStory = z.infer<typeof DemoStory>;
+
 export const RunInput = z
   .object({
     url: z
@@ -146,6 +165,7 @@ export const RunInput = z
     password: z.string().min(1).max(1024),
     message: z.string().trim().min(1).max(1000),
     chatUrl: z.url().max(2048).optional(),
+    mode: z.enum(["chat", "tour"]).default("chat"),
     consent: z.literal(true),
   })
   .strict()

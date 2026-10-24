@@ -14,9 +14,11 @@ test("AI navigation observes only approved link metadata and reaches the verifie
       return route.fulfill({
         contentType: "text/html",
         body: route.request().url().includes("/chats/")
-          ? '<label>Message<textarea></textarea></label><button aria-label="Send">Send</button>'
+          ? `<a href="/workspace">Workspace</a><div id="chat"></div><script>
+            setTimeout(() => { document.querySelector('#chat').innerHTML = '<label>Message<textarea></textarea></label><button aria-label="Send">Send</button>'; }, 250);
+            </script>`
           : `<title>Workspace</title><input type="password" value="never-share-this"><p>private body text</p>
-          <a href="/workspace">Home</a><a href="/chats/planning">Planning assistant</a>
+          <a href="/workspace">Home</a><a href="/chats/planning" aria-label="Open Atlas">Planning assistant</a>
           <a href="/chats/new">Create</a><a href="/chats/old/delete">Delete</a>
           <a href="https://evil.example/chats/a">External</a><a href="/chats/token?secret=value">Token</a>
           <a style="display:none" href="/chats/hidden">Hidden</a>`,
@@ -31,6 +33,7 @@ test("AI navigation observes only approved link metadata and reaches the verifie
       "https://product.example",
     );
     assert.equal(initial.links.length, 1);
+    assert.match(initial.links[0]!.label, /Open Atlas.*Planning assistant/);
     assert.equal(initial.url, "https://product.example/workspace");
     assert.doesNotMatch(
       JSON.stringify(initial),

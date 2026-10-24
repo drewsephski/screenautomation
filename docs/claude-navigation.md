@@ -5,8 +5,8 @@
 Use the official `@anthropic-ai/sdk` TypeScript client, direct Claude API billing,
 and the existing Playwright browser in Daytona. The installed SDK is pinned to
 1.2.0. The default model is `claude-haiku-5-5`; `ANTHROPIC_MODEL` can select another
-model available to the API key's organization. Model availability has not been
-verified against an owner's key.
+model available to the API key's organization. Live Haiku 5.5 access was verified
+with the configured key on October 24, 2026; see the live smoke test below.
 
 The Haiku 5.5 request uses a named `tool_choice` to return one navigation action
 without a thinking block. Its
@@ -127,3 +127,57 @@ shares with Anthropic.
 The next live check is one owner-authorized capture with a key from the linked
 organization and a prepared Krafty demo account. Compare the chosen chat and
 `claude-usage.json` with the Claude Console before increasing volume.
+
+## Live smoke test — October 24, 2026
+
+The configured key successfully called the real Anthropic API with
+`claude-haiku-5-5`. An initial synthetic observation selected the workday chat
+over a meal-planning chat (868 input / 53 output tokens).
+
+A second test ran the production `discoverChat` and `ClaudeNavigator` functions
+against real Chromium with a synthetic website. Haiku selected the relevant
+workday chat, Playwright navigated to it, and Haiku returned `ready` after the
+known chat controls appeared. The two-call browser flow passed in 4,372 ms and
+reported 1,681 input / 86 output tokens. There were no mutating requests and no
+chat message was sent. Sanitized evidence:
+[claude-haiku-navigation-2026-10-24.json](./evidence/claude-haiku-navigation-2026-10-24.json).
+
+This proves live model access, compatible tool calling, and the browser discovery
+loop. It does not verify whether Anthropic deducted promotional or purchased
+credits, production deployment, Krafty login, recording, or artifact upload.
+At the time of this smoke test the local environment had no `DATABASE_URL`, so a
+complete queued capture was not attempted. A dedicated Neon database was
+subsequently configured; see [database setup and verification](./neon.md).
+
+## Real Krafty capture — October 24, 2026
+
+A dedicated password-enabled demo account and an Atlas planning-assistant chat
+were created in the owner's Krafty instance. Credentials stay in the ignored,
+private `artifacts/demo/krafty-account.json` file; they are not included here or
+in capture evidence.
+
+The real test exposed two discovery problems: topic matching was too strict for
+an ambiguously named existing chat, and sidebar navigation arrived before the
+chat composer. Discovery now treats topic as a preference, includes visible link
+text alongside its accessible name, and waits for known chat controls on a
+conversation route. A delayed-composer regression test covers the loading race.
+Navigation logs include action, link count and error type/status only, never
+page labels, prompts, credentials or provider response bodies.
+
+After three discovery failures before any test message was sent, run
+`4af94d6d-38ec-4f0b-9c1d-7b15174dcacd` completed the actual password login,
+two-call Haiku discovery, fresh-context rehearsal, one authorized message and
+verified reply, browser/desktop recording, media checks, private upload and
+sandbox cleanup. Provider readback confirmed sandbox deletion, the database
+confirmed credential clearance, and the downloaded browser media matched its
+manifest SHA-256. Haiku reported 2,164 input and 86 output tokens for the
+successful discovery. Browser footage is 1920×1080, 32.15 seconds; desktop footage
+is 33.37 seconds. Initial, waiting and completed-reply frames were inspected.
+
+The capture archive and extracted recordings are under ignored `artifacts/demo/`.
+Sanitized evidence:
+[krafty-demo-capture-2026-10-24.json](./evidence/krafty-demo-capture-2026-10-24.json).
+All 19 worker tests, lint, type checking and browser bundling passed. This is one
+successful real-product capture, not the three-consecutive-capture quality gate,
+founder publication approval, exact cross-source synchronization, or reconciled
+provider billing.

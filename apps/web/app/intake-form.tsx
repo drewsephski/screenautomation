@@ -1,4 +1,5 @@
 import type { FormEvent, RefObject } from "react";
+import { useState } from "react";
 
 export const defaultUrl = "https://kraftybot.app";
 export const defaultMessage =
@@ -19,6 +20,7 @@ export function IntakeForm({
   error: string;
   onDraft: (draft: { url: string; message: string }) => void;
 }) {
+  const [mode, setMode] = useState("chat");
   return (
     <section className="intake panel" aria-labelledby="setup-title">
       <div className="panel-heading">
@@ -40,6 +42,16 @@ export function IntakeForm({
         }}
       >
         <fieldset disabled={active || busy}>
+          <label htmlFor="mode">What should we record?</label>
+          <select
+            id="mode"
+            name="mode"
+            value={mode}
+            onChange={(event) => setMode(event.target.value)}
+          >
+            <option value="chat">A real chat and reply</option>
+            <option value="tour">A read-only product tour</option>
+          </select>
           <label htmlFor="url">Website URL</label>
           <input
             id="url"
@@ -83,7 +95,11 @@ export function IntakeForm({
               Use a prepared demo account.
             </p>
           </div>
-          <label htmlFor="message">Message to send</label>
+          <label htmlFor="message">
+            {mode === "tour"
+              ? "What should the story show?"
+              : "Message to send"}
+          </label>
           <textarea
             id="message"
             name="message"
@@ -93,36 +109,40 @@ export function IntakeForm({
             defaultValue={defaultMessage}
           />
           <p className="field-note">
-            One chat message. No payments, deletions, or messages to other
-            people.
+            {mode === "tour"
+              ? "Claude proposes up to three enabled product pages. Review the story before recording. No forms are submitted."
+              : "One chat message. No payments, deletions, or messages to other people."}
           </p>
           <p className="privacy-note">
-            When Claude discovery is enabled, your message and visible chat
-            titles and chat links are shared with Anthropic to choose an
-            existing chat. Provide an exact chat URL below to skip AI discovery.
+            Claude receives your goal, visible page titles and enabled
+            navigation links. Your password and cookies stay outside the model.
+            An exact chat URL skips chat discovery.
           </p>
-          <details>
-            <summary>Already have a specific chat page?</summary>
-            <label htmlFor="chatUrl">
-              Chat URL <span className="optional">optional</span>
-            </label>
-            <input
-              id="chatUrl"
-              name="chatUrl"
-              type="url"
-              maxLength={2048}
-              placeholder="https://your-product.com/chats/…"
-            />
-            <p className="field-note">
-              Must belong to the same website. Otherwise, the agent looks for an
-              existing chat.
-            </p>
-          </details>
+          {mode === "chat" && (
+            <details>
+              <summary>Already have a specific chat page?</summary>
+              <label htmlFor="chatUrl">
+                Chat URL <span className="optional">optional</span>
+              </label>
+              <input
+                id="chatUrl"
+                name="chatUrl"
+                type="url"
+                maxLength={2048}
+                placeholder="https://your-product.com/chats/…"
+              />
+              <p className="field-note">
+                Must belong to the same website. Otherwise, the agent looks for
+                an existing chat.
+              </p>
+            </details>
+          )}
           <label className="consent">
             <input name="consent" type="checkbox" required />
             <span>
-              I have permission to access this account, record its screen, and
-              send this chat message.
+              {mode === "tour"
+                ? "I have permission to access this account and record its approved product pages."
+                : "I have permission to access this account, record its screen, and send this chat message."}
             </span>
           </label>
           <button className="primary-button" type="submit">

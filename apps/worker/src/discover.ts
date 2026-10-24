@@ -29,7 +29,9 @@ export async function observeNavigation(
       })
       .slice(0, 300)
       .map((element) => ({
-        label: (element.getAttribute("aria-label") || element.textContent || "")
+        label: [element.getAttribute("aria-label"), element.textContent]
+          .filter(Boolean)
+          .join(" ")
           .trim()
           .slice(0, 160),
         url: (element as HTMLAnchorElement).href,
@@ -82,6 +84,20 @@ export async function discoverChat(
       .locator('a[href], [role="textbox"], textarea')
       .first()
       .waitFor({ state: "attached", timeout: 10000 });
+    // The sidebar arrives before the asynchronously loaded chat. Do not ask
+    // Claude to navigate away while the message controls are still mounting.
+    if (
+      /^\/(?:chats|chat|conversations|conversation)\/[^/]+\/?$/.test(
+        new URL(page.url()).pathname,
+      )
+    ) {
+      await page
+        .getByRole("textbox", { name: "Message", exact: true })
+        .waitFor({ state: "visible", timeout: 20000 });
+      await page
+        .getByRole("button", { name: /^(submit|send|send message)$/i })
+        .waitFor({ state: "visible", timeout: 20000 });
+    }
     let observation = await observeNavigation(page, `${phase}-${turn}`, origin);
     const deadline = Date.now() + 10000;
     while (

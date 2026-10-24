@@ -1,0 +1,29 @@
+{
+  "results": [
+    {
+      "kind": "cancel",
+      "runId": "7a797486-726a-498a-a9b8-0e625604f798",
+      "status": "cancelled",
+      "detail": "Cancelled. No further actions will be started.",
+      "cleanup": {
+        "credentials_cleared": true,
+        "cleanup_pending": false,
+        "sandbox_cleared": true,
+        "no_artifact": true
+      }
+    },
+    {
+      "kind": "missing-chat",
+      "runId": "13d3a966-8652-469a-92f8-77f074f4d7fc",
+      "status": "failed",
+      "detail": "The chat opened, but no message box labelled “Message” was found. Paste the exact chat URL and try again.",
+      "cleanup": {
+        "credentials_cleared": true,
+        "cleanup_pending": false,
+        "sandbox_cleared": true,
+        "no_artifact": true
+      }
+    }
+  ],
+  "expiredLogin": "Browser fixture test passed; live provider session revocation not exercised"
+}

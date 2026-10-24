@@ -1,0 +1,32 @@
+{
+  "at": "2026-10-24T16:16:03.161Z",
+  "runId": "4af94d6d-38ec-4f0b-9c1d-7b15174dcacd",
+  "website": "https://kraftybot.app",
+  "realProductCapture": true,
+  "demoAccountCreated": true,
+  "demoAssistant": "Atlas",
+  "status": "completed",
+  "manifestStatus": "verified",
+  "messageSends": 1,
+  "replyVerified": true,
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "browserMediaSha256Verified": true,
+  "sandboxDeletionReadbackConfirmed": true,
+  "credentialsCleared": true,
+  "claudeUsage": {
+    "model": "claude-haiku-5-5",
+    "calls": 2,
+    "inputTokens": 2164,
+    "outputTokens": 86
+  },
+  "earlierAttemptsFailedBeforeSend": 3,
+  "qualityReview": "Sampled initial chat, waiting, and completed reply frames; founder review and synchronization gate remain pending",
+  "browserDurationSeconds": 32.15,
+  "desktopDurationSeconds": 33.366667,
+  "workerTestsPassed": 19,
+  "workerLintPassed": true,
+  "workerTypecheckPassed": true
+}
